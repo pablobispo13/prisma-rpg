@@ -16,6 +16,7 @@ type Props = {
 export default function MesaJogador({ forcedCharacterId, isSpectator = false }: Props) {
   const [character, setCharacter] = useState<Character | null>(null);
   const [loadingCharacter, setLoadingCharacter] = useState<boolean>(false);
+  const [autoCreateAttempted, setAutoCreateAttempted] = useState(false);
 
   async function getCharacters() {
     setLoadingCharacter(true);
@@ -25,14 +26,24 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
       const characters: Character[] = res.data.characters;
 
       if (forcedCharacterId) {
-        const found = characters.find(
-          (c) => c.id === forcedCharacterId
-        );
+        const found = characters.find((c) => c.id === forcedCharacterId);
         if (found) {
           setCharacter(found);
           return;
         }
       }
+
+      if (characters.length === 0 && !autoCreateAttempted) {
+        setAutoCreateAttempted(true);
+        try {
+          await createCharacterTemplate();
+        } catch {
+          // If auto-creation fails, allow manual creation via button.
+        }
+        await getCharacters();
+        return;
+      }
+
       setCharacter(characters[0] ?? null);
     } finally {
       setLoadingCharacter(false);
@@ -40,8 +51,8 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
   }
 
   useEffect(() => {
-    getCharacters()
-  }, []);
+    getCharacters();
+  }, [forcedCharacterId]);
 
   if (loadingCharacter) return <>Carregando...</>
   if (!character) {

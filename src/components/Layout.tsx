@@ -1,6 +1,8 @@
+import Head from "next/head";
 import { ReactNode } from "react";
 import { AppBar, Toolbar, Button, Box, Typography, Chip } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
+import { useCampaign } from "../context/CampaignContext";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CampaignSelector from "./Campaign/CampaignSelector";
 
@@ -10,8 +12,15 @@ type LayoutProps = {
 
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth();
+  const { activeCampaign } = useCampaign();
+  const title = activeCampaign ? `${activeCampaign.name} — Quarentena RPG` : "Quarentena RPG";
+
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#0e0e1a" }}>
+    <>
+      <Head>
+        <title>{title}</title>
+      </Head>
+      <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#0e0e1a" }}>
       {user && (
         <AppBar
           position="static"
@@ -43,7 +52,7 @@ export default function Layout({ children }: LayoutProps) {
                   textTransform: "uppercase",
                 }}
               >
-                Quarentena RPG
+                {activeCampaign?.name ?? "Quarentena RPG"}
               </Typography>
             </Box>
 
@@ -115,5 +124,6 @@ export default function Layout({ children }: LayoutProps) {
         {children}
       </Box>
     </Box>
+  </>
   );
 }

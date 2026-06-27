@@ -10,12 +10,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
 
     const user = req.user!;
-    const { campaignId } = req.campaign!;
+    const { campaignId, isMaster } = req.campaign!;
 
     const baseWhere = { active: true, campaignId };
 
     const combats =
-        user.role === "MESTRE"
+        isMaster
             ? await prisma.combat.findMany({
                 where: baseWhere,
                 include: {

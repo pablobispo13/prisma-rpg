@@ -4,12 +4,12 @@ import { prisma } from "../../../lib/prisma";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   const user = req.user!;
-  const { campaignId } = req.campaign!;
+  const { campaignId, isMaster } = req.campaign!;
 
   // LISTAR PERSONAGENS da mesa
   if (req.method === "GET") {
     const characters =
-      user.role === "MESTRE"
+      isMaster
         ? await prisma.character.findMany({
             where: { campaignId },
             orderBy: { name: "asc" },
@@ -68,7 +68,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
   // CRIAR PERSONAGEM dentro da mesa
   if (req.method === "POST") {
-    if (user.role !== "MESTRE") {
+    // Jogador (não-mestre desta mesa) só pode ter um personagem por mesa
+    if (!isMaster) {
       const existing = await prisma.character.findFirst({
         where: { ownerId: user.userId, campaignId },
       });

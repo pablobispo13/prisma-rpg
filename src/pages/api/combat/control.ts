@@ -11,7 +11,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         return;
     }
 
-    const { campaignId } = req.campaign!;
+    const { campaignId, isMaster } = req.campaign!;
     const { action, combatId, participantIds, turnId } = req.body;
 
     // Para qualquer ação que opere sobre um combatId existente, valida que ele pertence à mesa
@@ -294,7 +294,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
 
         case "adjustHp": {
-            if (req.user?.role !== "MESTRE") {
+            if (!isMaster) {
                 return res.status(403).json({ message: "Apenas o mestre pode ajustar HP" });
             }
             const { characterId: hpCharId, newHp } = req.body;
@@ -324,7 +324,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
 
         case "reorderTurns": {
-            if (req.user?.role !== "MESTRE") {
+            if (!isMaster) {
                 return res.status(403).json({ message: "Apenas o mestre pode reordenar" });
             }
             const { order } = req.body;
@@ -368,7 +368,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
 
         case "updateNotes": {
-            if (req.user?.role !== "MESTRE") {
+            if (!isMaster) {
                 return res.status(403).json({ message: "Apenas o mestre pode editar notas" });
             }
             const { notes } = req.body;
@@ -378,7 +378,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
 
         case "setStreamUrl": {
-            if (req.user?.role !== "MESTRE") {
+            if (!isMaster) {
                 return res.status(403).json({ message: "Apenas o mestre pode configurar a stream" });
             }
             const { streamUrl } = req.body;

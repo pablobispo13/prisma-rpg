@@ -15,6 +15,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     where: { id },
     include: {
       owner: true,
+      campaign: { select: { masterId: true } },
       dodgePreset: true,
       blockPreset: true,
       counterAttackPreset: true,
@@ -106,10 +107,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     return;
   }
 
-  // CLONAR PERSONAGEM
+  // CLONAR PERSONAGEM (apenas o mestre desta mesa)
   if (req.method === "POST") {
-    if (user.role !== "MESTRE") {
-      res.status(403).json({ message: "Apenas o mestre pode clonar personagens" });
+    if (character.campaign.masterId !== user.userId) {
+      res.status(403).json({ message: "Apenas o mestre da mesa pode clonar personagens" });
       return;
     }
 

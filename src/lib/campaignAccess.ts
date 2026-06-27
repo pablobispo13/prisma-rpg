@@ -28,13 +28,18 @@ export async function getCampaignAccess(
   let isMember = isMaster;
 
   if (!isMaster) {
-    const member = await prisma.campaignMember.findUnique({
-      where: {
-        campaignId_userId: { campaignId, userId: user.userId },
-      },
-      select: { id: true },
-    });
-    isMember = !!member;
+    // Admin é membro de qualquer mesa (mas não mestre, exceto se for o masterId)
+    if (user.isAdmin) {
+      isMember = true;
+    } else {
+      const member = await prisma.campaignMember.findUnique({
+        where: {
+          campaignId_userId: { campaignId, userId: user.userId },
+        },
+        select: { id: true },
+      });
+      isMember = !!member;
+    }
   }
 
   if (!isMaster && !isMember) return null;

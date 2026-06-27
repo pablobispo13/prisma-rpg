@@ -68,7 +68,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
 
     if (req.method === "DELETE") {
-        if (user.role !== "MESTRE") {
+        if (!access.isMaster) {
             res.status(403).json({ message: "Apenas o mestre pode deletar combates" });
             return;
         }

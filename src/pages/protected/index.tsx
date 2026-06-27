@@ -50,8 +50,9 @@ export default function Mesa() {
 
   const view = searchParams.get("view");
   const characterId = searchParams.get("characterId");
-  // key={activeCampaign.id} força re-mount ao trocar de mesa, recarregando todos os fetches
-  if (user.role === "MESTRE" && view === "jogador") {
+  const isCampaignMaster = activeCampaign?.masterId === user.id;
+
+  if (isCampaignMaster && view === "jogador") {
     return (
       <Jogador
         key={activeCampaign.id}
@@ -61,7 +62,9 @@ export default function Mesa() {
     );
   }
 
-  return user.role === "MESTRE"
-    ? <Mestre key={activeCampaign.id} />
-    : <Jogador key={activeCampaign.id} />;
+  if (isCampaignMaster) {
+    return <Mestre key={activeCampaign.id} />;
+  }
+
+  return <Jogador key={activeCampaign.id} />;
 }

@@ -2,7 +2,7 @@ import type { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
 import { EffectType, LogType } from "@prisma/client";
-import { canActOnCharacter } from "../../../lib/campaignAccess";
+import { canActOnCharacter, getCampaignAccess, getCharacterCampaign } from "../../../lib/campaignAccess";
 
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
@@ -46,12 +46,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             res.status(400).json({ message: "Dados obrigatórios ausentes" });
             return;
         }
-        if (user.role !== "MESTRE") {
+        const campaignId = await getCharacterCampaign(characterId);
+        const access = campaignId ? await getCampaignAccess(user, campaignId) : null;
+        if (!access?.isMaster) {
             res.status(403).json({ message: "Apenas o mestre pode aplicar status manualmente" });
-            return;
-        }
-        if (!(await canActOnCharacter(user, characterId))) {
-            res.status(403).json({ message: "Personagem não pertence à sua mesa" });
             return;
         }
 
@@ -88,14 +86,16 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             return;
         }
 
-        if (user.role !== "MESTRE") {
-            res.status(403).json({ message: "Apenas o mestre pode remover status" });
+        const effect = await prisma.characterEffect.findUnique({ where: { id: effectId } });
+        if (!effect) {
+            res.status(404).json({ message: "Efeito não encontrado" });
             return;
         }
 
-        const effect = await prisma.characterEffect.findUnique({ where: { id: effectId } });
-        if (!effect || !(await canActOnCharacter(user, effect.characterId))) {
-            res.status(403).json({ message: "Sem acesso a este efeito" });
+        const campaignId = await getCharacterCampaign(effect.characterId);
+        const access = campaignId ? await getCampaignAccess(user, campaignId) : null;
+        if (!access?.isMaster) {
+            res.status(403).json({ message: "Apenas o mestre pode remover status" });
             return;
         }
 

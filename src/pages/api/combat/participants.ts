@@ -11,11 +11,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         return;
     }
 
-    if (req.user?.role !== "MESTRE") {
+    const { campaignId, isMaster } = req.campaign!;
+
+    if (!isMaster) {
         return res.status(403).json({ message: "Apenas o mestre pode adicionar participantes" });
     }
 
-    const { campaignId } = req.campaign!;
     const { combatId, characterId } = req.body;
 
     if (!combatId || !characterId) {

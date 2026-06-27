@@ -25,8 +25,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     return;
   }
 
-  // Jogador só cria um personagem por mesa
-  if (user.role !== "MESTRE") {
+  const isMasterOfCampaign = req.campaign?.isMaster;
+
+  // Jogador (não-mestre da mesa) só cria um personagem PLAYER por mesa
+  if (!isMasterOfCampaign) {
     const existing = await prisma.character.findFirst({
       where: { ownerId: user.userId, campaignId },
     });
@@ -36,7 +38,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
     // Jogador só pode criar PLAYER (não inimigos/bosses)
     if (archetype !== "PLAYER") {
-      res.status(403).json({ message: "Apenas o mestre cria inimigos/NPCs" });
+      res.status(403).json({ message: "Apenas o mestre da mesa cria inimigos/NPCs" });
       return;
     }
   }

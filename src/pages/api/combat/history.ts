@@ -9,8 +9,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         return;
     }
 
+    const { campaignId, isMaster } = req.campaign!;
     const user = req.user!;
-    const { campaignId } = req.campaign!;
     const { limit = 20, skip = 0 } = req.query;
 
     const campaign = await prisma.campaign.findUnique({
@@ -20,7 +20,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     const masterId = campaign?.masterId ?? null;
 
     const where =
-        user.role === "MESTRE"
+        isMaster
             ? { active: false, campaignId }
             : {
                 active: false,

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box, Button, Card, CardContent, Typography, TextField, Dialog,
   DialogTitle, DialogContent, DialogActions, Stack, Chip, IconButton, Tooltip,
   FormControlLabel, Switch, MenuItem, Divider, List, ListItem, ListItemText,
+  Autocomplete,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import LoginIcon from "@mui/icons-material/Login";
@@ -45,6 +46,38 @@ export default function MesasPage() {
   const [inviteExpHours, setInviteExpHours] = useState<number>(24);
   const [inviteMaxUses, setInviteMaxUses] = useState<string>("");
 
+  // Admin: atribuir mesa a um mestre ao criar
+  type AdminUserOption = {
+    id: string;
+    username: string;
+    email: string;
+    role: "MESTRE" | "JOGADOR";
+  };
+  const [userOptions, setUserOptions] = useState<AdminUserOption[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [selectedMaster, setSelectedMaster] = useState<AdminUserOption | null>(null);
+  const [userQuery, setUserQuery] = useState("");
+
+  useEffect(() => {
+    if (!createOpen || !user?.isAdmin) return;
+    let cancelled = false;
+    setUsersLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get("/admin/users", {
+          params: userQuery ? { q: userQuery } : {},
+          silent: true,
+        });
+        if (!cancelled) setUserOptions(data.users ?? []);
+      } catch {
+        if (!cancelled) setUserOptions([]);
+      } finally {
+        if (!cancelled) setUsersLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [createOpen, userQuery, user?.isAdmin]);
+
   const createForm = useForm<CampaignForm>({
     resolver: yupResolver(campaignSchema),
     defaultValues: { name: "", description: "" },
@@ -67,13 +100,20 @@ export default function MesasPage() {
   };
 
   const handleCreate = createForm.handleSubmit(async (values) => {
+    if (!selectedMaster) {
+      toast.error("Selecione um mestre");
+      return;
+    }
     try {
-      const { data } = await api.post("/campaigns", values);
-      toast.success("Mesa criada");
+      const payload: Record<string, unknown> = { ...values, masterId: selectedMaster.id };
+
+      const { data } = await api.post("/campaigns", payload);
+      toast.success(`Mesa criada para ${selectedMaster.username}`);
       setCreateOpen(false);
       createForm.reset({ name: "", description: "" });
+      setSelectedMaster(null);
+      setUserQuery("");
       await refresh();
-      setActiveCampaign(data);
     } catch {}
   });
 
@@ -192,7 +232,7 @@ export default function MesasPage() {
           <Button startIcon={<LoginIcon />} variant="outlined" onClick={() => setJoinOpen(true)}>
             Entrar com código
           </Button>
-          {user?.role === "MESTRE" && (
+          {user?.isAdmin && (
             <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
               Nova mesa
             </Button>
@@ -369,7 +409,16 @@ export default function MesasPage() {
       </Stack>
 
       {/* CRIAR MESA */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          setSelectedMaster(null);
+          setUserQuery("");
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
         <form onSubmit={handleCreate}>
           <DialogTitle>Nova mesa</DialogTitle>
           <DialogContent>
@@ -391,10 +440,63 @@ export default function MesasPage() {
                     error={!!fieldState.error} helperText={fieldState.error?.message} />
                 )}
               />
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>Atribuir mestre</Typography>
+              <Autocomplete<AdminUserOption>
+                options={userOptions}
+                value={selectedMaster}
+                onChange={(_, v) => setSelectedMaster(v)}
+                onInputChange={(_, v) => setUserQuery(v)}
+                loading={usersLoading}
+                getOptionLabel={(opt) => opt.username}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                filterOptions={(x) => x}
+                renderOption={(props, opt) => (
+                  <li {...props} key={opt.id}>
+                    <Stack>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography sx={{ fontWeight: 600 }}>{opt.username}</Typography>
+                        <Chip
+                          label={opt.role}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: 10,
+                            background: opt.role === "MESTRE"
+                              ? "rgba(107,122,219,0.2)"
+                              : "rgba(255,255,255,0.08)",
+                            color: opt.role === "MESTRE" ? "#8B9DFF" : "#cdd1e0",
+                          }}
+                        />
+                      </Stack>
+                      <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                        {opt.email}
+                      </Typography>
+                    </Stack>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Buscar mestre"
+                    placeholder="Digite um nome ou e-mail"
+                  />
+                )}
+              />
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                {selectedMaster?.role === "JOGADOR"
+                  ? "O usuário será promovido a MESTRE automaticamente."
+                  : ""}
+              </Typography>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={() => {
+              setCreateOpen(false);
+              setSelectedMaster(null);
+              setUserQuery("");
+            }}>Cancelar</Button>
             <Button type="submit" variant="contained">Criar</Button>
           </DialogActions>
         </form>
