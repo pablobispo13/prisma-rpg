@@ -14,6 +14,7 @@ import { useLoginForm, useRegisterForm } from "../hooks/useAuthForms";
 import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import { useAuth } from "../context/AuthContext";
+import DiceLogo from "../components/DiceLogo";
 import EmailIcon from "@mui/icons-material/Email";
 import LockIcon from "@mui/icons-material/Lock";
 import PersonIcon from "@mui/icons-material/Person";
@@ -134,16 +135,9 @@ export default function LoginPage() {
       >
         {/* Header */}
         <Box sx={{ textAlign: "center", mb: 3.5 }}>
-          <Typography
-            sx={{
-              fontSize: 38,
-              lineHeight: 1,
-              mb: 1,
-              filter: "drop-shadow(0 0 12px rgba(107,122,219,0.4))",
-            }}
-          >
-            ⚔️
-          </Typography>
+          <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
+            <DiceLogo size={48} />
+          </Box>
           <Typography
             variant="h5"
             sx={{
@@ -155,7 +149,7 @@ export default function LoginPage() {
               fontFamily: "'Rubik', sans-serif",
             }}
           >
-            Quarentena RPG
+            Prisma RPG
           </Typography>
           <Typography
             variant="caption"

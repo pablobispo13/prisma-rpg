@@ -1,4 +1,5 @@
 import { useContext } from "react";
+import Head from "next/head";
 import type { AppProps } from "next/app";
 import { CssBaseline } from "@mui/material";
 import { ToastContainer } from "react-toastify";
@@ -13,6 +14,10 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
     return (
         <ThemeContextProvider>
+            <>
+            <Head>
+                <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+            </Head>
             <AuthProvider>
                 <CampaignProvider>
                     <Layout>
@@ -26,6 +31,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                     </Layout>
                 </CampaignProvider>
             </AuthProvider>
+            </>
         </ThemeContextProvider>
     );
 }

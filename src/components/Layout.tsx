@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCampaign } from "../context/CampaignContext";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CampaignSelector from "./Campaign/CampaignSelector";
+import DiceLogo from "./DiceLogo";
 
 type LayoutProps = {
   children: ReactNode;
@@ -13,7 +14,7 @@ type LayoutProps = {
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth();
   const { activeCampaign } = useCampaign();
-  const title = activeCampaign ? `${activeCampaign.name} — Quarentena RPG` : "Quarentena RPG";
+  const title = activeCampaign ? `${activeCampaign.name} — Prisma RPG` : "Prisma RPG";
 
   return (
     <>
@@ -41,7 +42,7 @@ export default function Layout({ children }: LayoutProps) {
           >
             {/* Logo */}
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-              <Typography sx={{ fontSize: 17, lineHeight: 1, userSelect: "none" }}>⚔️</Typography>
+              <DiceLogo size={24} glow={false} showNumber={false} />
               <Typography
                 sx={{
                   fontWeight: 800,
@@ -52,7 +53,7 @@ export default function Layout({ children }: LayoutProps) {
                   textTransform: "uppercase",
                 }}
               >
-                {activeCampaign?.name ?? "Quarentena RPG"}
+                {activeCampaign?.name ?? "Prisma RPG"}
               </Typography>
             </Box>
 
