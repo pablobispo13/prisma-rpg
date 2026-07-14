@@ -1,68 +1,112 @@
 import { NextApiResponse } from "next";
 import { withCampaign, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
+import { Prisma } from "@prisma/client";
+
+// Includes compartilhados entre a listagem e a substituição por forma ativa
+const masterInclude = {
+  owner: true,
+  presets: {
+    orderBy: { name: "asc" },
+    include: {
+      characterEffects: true,
+      dodgeCharacters: true,
+      blockCharacters: true,
+      counterAttackCharacters: true,
+      rolls: true,
+      inventories: true,
+    },
+  },
+  inventory: { orderBy: { name: "desc" } },
+  dodgePreset: true,
+  blockPreset: true,
+  counterAttackPreset: true,
+  actionLogs: {
+    take: 10,
+    orderBy: { createdAt: "desc" },
+    include: {
+      roll: { include: { preset: true } },
+      character: true,
+      target: true,
+    },
+  },
+  targetLogs: true,
+  combatParticipants: true,
+  turns: true,
+  rollResults: { include: { preset: true, logs: true } },
+  statusEffects: true,
+} satisfies Prisma.CharacterInclude;
+
+const playerInclude = {
+  owner: true,
+  dodgePreset: true,
+  blockPreset: true,
+  counterAttackPreset: true,
+  targetLogs: true,
+  combatParticipants: true,
+  turns: true,
+  rollResults: { include: { preset: true, logs: true } },
+  statusEffects: true,
+} satisfies Prisma.CharacterInclude;
+
+const formsSelect = {
+  forms: { select: { id: true, name: true, image: true } },
+} as const;
+
+type FormOption = { id: string; name: string; image: string | null };
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   const user = req.user!;
   const { campaignId, isMaster } = req.campaign!;
 
-  // LISTAR PERSONAGENS da mesa
+  // LISTAR PERSONAGENS da mesa (apenas fichas principais; formas ficam ocultas)
   if (req.method === "GET") {
-    const characters =
-      isMaster
-        ? await prisma.character.findMany({
-            where: { campaignId },
-            orderBy: { name: "asc" },
-            include: {
-              owner: true,
-              presets: {
-                orderBy: { name: "asc" },
-                include: {
-                  characterEffects: true,
-                  dodgeCharacters: true,
-                  blockCharacters: true,
-                  counterAttackCharacters: true,
-                  rolls: true,
-                  inventories: true,
-                },
-              },
-              inventory: { orderBy: { name: "desc" } },
-              dodgePreset: true,
-              blockPreset: true,
-              counterAttackPreset: true,
-              actionLogs: {
-                take: 10,
-                orderBy: { createdAt: "desc" },
-                include: {
-                  roll: { include: { preset: true } },
-                  character: true,
-                  target: true,
-                },
-              },
-              targetLogs: true,
-              combatParticipants: true,
-              turns: true,
-              rollResults: { include: { preset: true, logs: true } },
-              statusEffects: true,
-            },
-          })
-        : await prisma.character.findMany({
-            where: { campaignId, ownerId: user.userId },
-            orderBy: { name: "asc" },
-            include: {
-              owner: true,
-              dodgePreset: true,
-              blockPreset: true,
-              counterAttackPreset: true,
-              targetLogs: true,
-              combatParticipants: true,
-              turns: true,
-              rollResults: { include: { preset: true, logs: true } },
-              statusEffects: true,
-            },
-          });
+    const include = isMaster ? masterInclude : playerInclude;
 
-    res.status(200).json({ characters });
+    const characters = await prisma.character.findMany({
+      where: {
+        campaignId,
+        // Mongo: personagens antigos não têm o campo — "ausente" não casa com null
+        OR: [{ primaryFormId: null }, { primaryFormId: { isSet: false } }],
+        ...(isMaster ? {} : { ownerId: user.userId }),
+      },
+      orderBy: { name: "asc" },
+      include: { ...include, ...formsSelect },
+    });
+
+    // Personagens transformados: retorna a ficha da forma ativa no lugar da
+    // principal, com metadados do grupo de formas para o front trocar
+    const activeFormIds = characters
+      .map((c) => c.activeFormId)
+      .filter((id): id is string => !!id);
+
+    const activeForms = activeFormIds.length
+      ? await prisma.character.findMany({
+          where: { id: { in: activeFormIds } },
+          include,
+        })
+      : [];
+    const activeFormById = new Map(activeForms.map((f) => [f.id, f]));
+
+    const result = characters.map((c) => {
+      const { forms, ...primary } = c;
+      const options: FormOption[] = [
+        { id: primary.id, name: primary.name, image: primary.image },
+        ...forms,
+      ];
+      const formGroup =
+        forms.length > 0
+          ? { primaryId: primary.id, activeId: primary.activeFormId ?? primary.id, options }
+          : null;
+
+      const activeForm = primary.activeFormId
+        ? activeFormById.get(primary.activeFormId)
+        : null;
+
+      return activeForm ? { ...activeForm, formGroup } : { ...primary, formGroup };
+    });
+
+    res.status(200).json({ characters: result });
     return;
   }
 
@@ -71,7 +115,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     // Jogador (não-mestre desta mesa) só pode ter um personagem por mesa
     if (!isMaster) {
       const existing = await prisma.character.findFirst({
-        where: { ownerId: user.userId, campaignId },
+        where: {
+          ownerId: user.userId,
+          campaignId,
+          OR: [{ primaryFormId: null }, { primaryFormId: { isSet: false } }],
+        },
       });
       if (existing) {
         res.status(400).json({ message: "Você já possui um personagem nesta mesa" });
@@ -117,38 +165,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         blockPresetId: blockPresetId ?? null,
         counterAttackPresetId: counterAttackPresetId ?? null,
       },
-      include: {
-        owner: true,
-        presets: {
-          orderBy: { name: "asc" },
-          include: {
-            characterEffects: true,
-            dodgeCharacters: true,
-            blockCharacters: true,
-            counterAttackCharacters: true,
-            rolls: true,
-            inventories: true,
-          },
-        },
-        inventory: { orderBy: { name: "desc" } },
-        dodgePreset: true,
-        blockPreset: true,
-        counterAttackPreset: true,
-        actionLogs: {
-          take: 10,
-          orderBy: { createdAt: "desc" },
-          include: {
-            roll: { include: { preset: true } },
-            character: true,
-            target: true,
-          },
-        },
-        targetLogs: true,
-        combatParticipants: true,
-        turns: true,
-        rollResults: { include: { preset: true, logs: true } },
-        statusEffects: true,
-      },
+      include: masterInclude,
     });
 
     res.status(201).json(character);

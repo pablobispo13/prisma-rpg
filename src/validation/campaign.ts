@@ -1,9 +1,25 @@
 import * as yup from "yup";
+import { validateFormula } from "../lib/formula";
 
 export type CampaignForm = {
   name: string;
   description?: string | null;
+  defenseFormula?: string | null;
+  maxLifeFormula?: string | null;
 };
+
+const formulaField = yup
+  .string()
+  .trim()
+  .max(120, "Máximo 120 caracteres")
+  .optional()
+  .nullable()
+  .transform((v) => (v === "" ? null : v))
+  .test("formula", function (value) {
+    if (value == null) return true;
+    const error = validateFormula(value);
+    return error ? this.createError({ message: error }) : true;
+  });
 
 export const campaignSchema: yup.ObjectSchema<CampaignForm> = yup.object({
   name: yup
@@ -19,6 +35,8 @@ export const campaignSchema: yup.ObjectSchema<CampaignForm> = yup.object({
     .optional()
     .nullable()
     .transform((v) => (v === "" ? null : v)),
+  defenseFormula: formulaField,
+  maxLifeFormula: formulaField,
 });
 
 export type JoinForm = {

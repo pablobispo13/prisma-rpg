@@ -39,7 +39,32 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
   // DETALHE
   if (req.method === "GET") {
-    res.status(200).json(character);
+    // Metadados do grupo de formas (mesmo shape da listagem), tanto para a
+    // ficha principal quanto para uma forma
+    const primaryId = character.primaryFormId ?? character.id;
+    const primaryRow = await prisma.character.findUnique({
+      where: { id: primaryId },
+      select: {
+        id: true,
+        name: true,
+        image: true,
+        activeFormId: true,
+        forms: { select: { id: true, name: true, image: true } },
+      },
+    });
+    const formGroup =
+      primaryRow && primaryRow.forms.length > 0
+        ? {
+            primaryId: primaryRow.id,
+            activeId: primaryRow.activeFormId ?? primaryRow.id,
+            options: [
+              { id: primaryRow.id, name: primaryRow.name, image: primaryRow.image },
+              ...primaryRow.forms,
+            ],
+          }
+        : null;
+
+    res.status(200).json({ ...character, formGroup });
     return;
   }
 
@@ -62,6 +87,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       dodgePresetId,
       blockPresetId,
       counterAttackPresetId,
+      maxReactionsPerRound,
+      maxAttacksPerRound,
     } = req.body;
 
     // image só pode ser alterada por admin (curadoria centralizada)
@@ -69,6 +96,17 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (!allowImage && image !== undefined && image !== character.image) {
       // não-admin enviou image diferente: ignora silenciosamente
     }
+
+    // Overrides de limites por rodada: apenas mestre da mesa ou admin,
+    // senão o jogador poderia se dar ataques/reações extras
+    const allowLimitOverrides = user.isAdmin || character.campaign.masterId === user.userId;
+    const normalizeLimit = (value: unknown): number | null | undefined => {
+      if (value === undefined) return undefined; // não altera
+      if (value === null || value === "") return null; // volta a usar o da mesa
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0 || n > 20) return undefined;
+      return n;
+    };
 
     const updated = await prisma.character.update({
       where: { id },
@@ -86,6 +124,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         history,
         notes,
         ...(allowImage ? { image: image || null } : {}),
+        ...(allowLimitOverrides
+          ? {
+              maxReactionsPerRound: normalizeLimit(maxReactionsPerRound),
+              maxAttacksPerRound: normalizeLimit(maxAttacksPerRound),
+            }
+          : {}),
         dodgePresetId,
         blockPresetId,
         counterAttackPresetId,
@@ -137,6 +181,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           intellect: source.intellect,
           presence: source.presence,
           baseDefense: source.baseDefense,
+          maxReactionsPerRound: source.maxReactionsPerRound,
+          maxAttacksPerRound: source.maxAttacksPerRound,
           history: source.history,
           notes: source.notes,
           image: source.image,
@@ -193,9 +239,16 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
   // REMOÇÃO
   if (req.method === "DELETE") {
-    // Validar se tem combates ativos
+    // Formas alternativas caem junto com o personagem principal
+    const formRows = await prisma.character.findMany({
+      where: { primaryFormId: id },
+      select: { id: true },
+    });
+    const idsToDelete = [...formRows.map((f) => f.id), id];
+
+    // Validar se tem combates ativos (o personagem ou qualquer forma dele)
     const activeCombats = await prisma.combatParticipant.findMany({
-      where: { characterId: id },
+      where: { characterId: { in: idsToDelete } },
       include: { combat: true },
     });
 
@@ -206,7 +259,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       });
     }
 
-    // Cascata completa em transação. Ordem importa por causa das FKs:
+    // Cascata completa em transação (formas primeiro, principal por último).
+    // Ordem importa por causa das FKs:
     // 1. Limpar FKs auto-referenciadas (dodge/block/counter) deste e de outros characters
     // 2. RollResultDetail (FK required → RollResult)
     // 3. ActionLog (referencia character/target/roll/turn)
@@ -214,77 +268,83 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     // 5. ActionPreset (depende de tudo acima estar limpo)
     // 6. Character
     await prisma.$transaction(async (tx) => {
-      // 1. Limpa FKs deste character
-      await tx.character.update({
-        where: { id },
-        data: { dodgePresetId: null, blockPresetId: null, counterAttackPresetId: null },
-      });
+      for (const delId of idsToDelete) {
+        // 1. Limpa FKs deste character
+        await tx.character.update({
+          where: { id: delId },
+          data: { dodgePresetId: null, blockPresetId: null, counterAttackPresetId: null },
+        });
 
-      // Outros characters podem referenciar presets DESTE character (raro mas possível).
-      const myPresets = await tx.actionPreset.findMany({
-        where: { characterId: id },
-        select: { id: true },
-      });
-      const myPresetIds = myPresets.map((p) => p.id);
-      if (myPresetIds.length > 0) {
-        await tx.character.updateMany({
-          where: { dodgePresetId: { in: myPresetIds } },
-          data: { dodgePresetId: null },
+        // Outros characters podem referenciar presets DESTE character (raro mas possível).
+        const myPresets = await tx.actionPreset.findMany({
+          where: { characterId: delId },
+          select: { id: true },
         });
-        await tx.character.updateMany({
-          where: { blockPresetId: { in: myPresetIds } },
-          data: { blockPresetId: null },
+        const myPresetIds = myPresets.map((p) => p.id);
+        if (myPresetIds.length > 0) {
+          await tx.character.updateMany({
+            where: { dodgePresetId: { in: myPresetIds } },
+            data: { dodgePresetId: null },
+          });
+          await tx.character.updateMany({
+            where: { blockPresetId: { in: myPresetIds } },
+            data: { blockPresetId: null },
+          });
+          await tx.character.updateMany({
+            where: { counterAttackPresetId: { in: myPresetIds } },
+            data: { counterAttackPresetId: null },
+          });
+        }
+
+        // 2. RollResultDetail (precisa vir antes do RollResult)
+        const myRolls = await tx.rollResult.findMany({
+          where: { characterId: delId },
+          select: { id: true },
         });
-        await tx.character.updateMany({
-          where: { counterAttackPresetId: { in: myPresetIds } },
-          data: { counterAttackPresetId: null },
+        const myRollIds = myRolls.map((r) => r.id);
+        if (myRollIds.length > 0) {
+          await tx.rollResultDetail.deleteMany({
+            where: { rollResultId: { in: myRollIds } },
+          });
+        }
+        // Também details onde o character era TARGET
+        await tx.rollResultDetail.deleteMany({ where: { targetId: delId } });
+
+        // 3. ActionLog (autor, alvo, ou ligado a um roll/turn deste character)
+        const myTurns = await tx.combatTurn.findMany({
+          where: { characterId: delId },
+          select: { id: true },
         });
+        const myTurnIds = myTurns.map((t) => t.id);
+        await tx.actionLog.deleteMany({
+          where: {
+            OR: [
+              { characterId: delId },
+              { targetId: delId },
+              ...(myRollIds.length > 0 ? [{ rollId: { in: myRollIds } }] : []),
+              ...(myTurnIds.length > 0 ? [{ turnId: { in: myTurnIds } }] : []),
+            ],
+          },
+        });
+
+        // 4. Efeitos, rolls, turnos, participants, inventário
+        await tx.characterEffect.deleteMany({ where: { characterId: delId } });
+        await tx.rollResult.deleteMany({ where: { characterId: delId } });
+        await tx.combatTurn.deleteMany({ where: { characterId: delId } });
+        await tx.combatParticipant.deleteMany({ where: { characterId: delId } });
+        await tx.inventory.deleteMany({ where: { characterId: delId } });
+
+        // 5. Presets (agora sem dependências)
+        await tx.actionPreset.deleteMany({ where: { characterId: delId } });
+
+        // 6. Character (limpa referência de forma ativa antes)
+        await tx.character.updateMany({
+          where: { activeFormId: delId },
+          data: { activeFormId: null },
+        });
+        await tx.character.delete({ where: { id: delId } });
       }
-
-      // 2. RollResultDetail (precisa vir antes do RollResult)
-      const myRolls = await tx.rollResult.findMany({
-        where: { characterId: id },
-        select: { id: true },
-      });
-      const myRollIds = myRolls.map((r) => r.id);
-      if (myRollIds.length > 0) {
-        await tx.rollResultDetail.deleteMany({
-          where: { rollResultId: { in: myRollIds } },
-        });
-      }
-      // Também details onde o character era TARGET
-      await tx.rollResultDetail.deleteMany({ where: { targetId: id } });
-
-      // 3. ActionLog (autor, alvo, ou ligado a um roll/turn deste character)
-      const myTurns = await tx.combatTurn.findMany({
-        where: { characterId: id },
-        select: { id: true },
-      });
-      const myTurnIds = myTurns.map((t) => t.id);
-      await tx.actionLog.deleteMany({
-        where: {
-          OR: [
-            { characterId: id },
-            { targetId: id },
-            ...(myRollIds.length > 0 ? [{ rollId: { in: myRollIds } }] : []),
-            ...(myTurnIds.length > 0 ? [{ turnId: { in: myTurnIds } }] : []),
-          ],
-        },
-      });
-
-      // 4. Efeitos, rolls, turnos, participants, inventário
-      await tx.characterEffect.deleteMany({ where: { characterId: id } });
-      await tx.rollResult.deleteMany({ where: { characterId: id } });
-      await tx.combatTurn.deleteMany({ where: { characterId: id } });
-      await tx.combatParticipant.deleteMany({ where: { characterId: id } });
-      await tx.inventory.deleteMany({ where: { characterId: id } });
-
-      // 5. Presets (agora sem dependências)
-      await tx.actionPreset.deleteMany({ where: { characterId: id } });
-
-      // 6. Character
-      await tx.character.delete({ where: { id } });
-    });
+    }, { timeout: 30000 });
 
     res.status(204).end();
     return;

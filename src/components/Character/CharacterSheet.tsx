@@ -47,12 +47,14 @@ type Props = {
   characterLoaded: Character;
   isMasterView?: boolean;
   onClose?: () => void;
+  onFormSwitched?: () => void;
 };
 
 export function CharacterSheet({
   characterLoaded,
   isMasterView = false,
   onClose,
+  onFormSwitched,
 }: Props) {
   const [item, setItem] = useState<CharacterInventory | undefined>();
   const [preset, setPreset] = useState<ActionPresetType | undefined>();
@@ -298,6 +300,8 @@ export function CharacterSheet({
               onEditAction={() => {
                 setEditStatsOpen(true);
               }}
+              canSwitchForm={canEdit}
+              onFormSwitched={onFormSwitched}
             />
 
             {/* Vida */}

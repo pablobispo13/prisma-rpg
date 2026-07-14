@@ -23,7 +23,10 @@ import {
   TextField,
   Tooltip,
   Avatar,
+  Menu,
+  MenuItem,
 } from "@mui/material";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
 import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
@@ -243,7 +246,7 @@ export default function CombatScreen({ combatId }: CombatScreenProps) {
 
 function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
   const {
-    combat, isMyTurn, actionUsed, myCharacterIds, selectedTargets,
+    combat, isMyTurn, actionUsed, attackLimit, attacksLeft, myCharacterIds, selectedTargets,
     selectTarget, clearTargets, useMainAction, endTurn, endCombat, pendingReactionRoll,
     resolveReaction, refreshCombat,
     isLoading, combatStats, clearStats,
@@ -277,6 +280,15 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
 
   // Armed preset (user must pick an action before selecting targets)
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+
+  // Transformação (troca de forma) em combate
+  const [formMenuAnchor, setFormMenuAnchor] = useState<null | HTMLElement>(null);
+  const [formGroupData, setFormGroupData] = useState<{
+    primaryId: string;
+    activeId: string;
+    options: { id: string; name: string; image: string | null }[];
+  } | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
 
   useEffect(() => {
     if (actionUsed || !isMyTurn) setSelectedPresetId(null);
@@ -446,6 +458,48 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
   const activeParticipant = ordered[combat.currentTurnIndex];
   const activeCharacter = activeParticipant.character;
   const myParticipant = ordered.find((p: any) => myCharacterIds.includes(p.character.id));
+
+  // Personagem que este usuário pode transformar (mestre: o da vez; jogador: o seu)
+  const transformChar = isMaster ? activeCharacter : myParticipant?.character;
+  const transformHasForms =
+    !!transformChar && ((transformChar.forms?.length ?? 0) > 0 || !!transformChar.primaryFormId);
+
+  async function openFormMenu(e: React.MouseEvent<HTMLElement>) {
+    if (!transformChar || formLoading) return;
+    const anchor = e.currentTarget;
+    setFormLoading(true);
+    try {
+      const res = await api.get(`/characters/${transformChar.id}`);
+      const fg = res.data.formGroup;
+      if (!fg || fg.options.length < 2) {
+        toast.info("Este personagem não possui formas alternativas");
+        return;
+      }
+      setFormGroupData(fg);
+      setFormMenuAnchor(anchor);
+    } catch {
+      toast.error("Erro ao carregar formas do personagem");
+    } finally {
+      setFormLoading(false);
+    }
+  }
+
+  async function switchFormInCombat(formId: string) {
+    if (!formGroupData) return;
+    setFormMenuAnchor(null);
+    setFormLoading(true);
+    try {
+      await api.post(`/characters/${formGroupData.primaryId}/switch-form`, { formId });
+      const target = formGroupData.options.find((o) => o.id === formId);
+      toast.success(`Transformado em ${target?.name ?? "outra forma"}`);
+      await refreshCombat();
+    } catch {
+      // mensagem de erro vem do interceptor (ex: reação pendente)
+    } finally {
+      setFormLoading(false);
+      setFormGroupData(null);
+    }
+  }
   const presetsSource = isMaster ? activeCharacter : (myParticipant?.character ?? activeCharacter);
   const canAct = isMyTurn && !pendingReactionRoll && !actionUsed;
   const canEndTurn = isMyTurn && !pendingReactionRoll;
@@ -456,6 +510,16 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
   ) as (ActionPresetType & { isAreaEffect?: boolean }) | undefined;
   const isAoe = !!(selectedPreset?.isAreaEffect) || selectedPreset?.targetType === "MULTIPLE";
   const isHealPreset = selectedPreset?.type === "HEAL" || selectedPreset?.type === "SUPPORT";
+
+  // Limite de reações do alvo da reação pendente (override do personagem > mesa; null = ilimitado)
+  const reactionTargetChar = pendingReactionRoll?.currentReactionTarget;
+  const reactionParticipant = reactionTargetChar
+    ? ordered.find((p: any) => p.character?.id === reactionTargetChar.id)
+    : null;
+  const reactionLimit: number | null =
+    reactionTargetChar?.maxReactionsPerRound ?? activeCampaign?.reactionsPerRound ?? null;
+  const reactionBlocked =
+    reactionLimit != null && (reactionParticipant?.reactionsUsed ?? 0) >= reactionLimit;
 
   return (
     <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "80px 1fr 0px", backgroundColor: "#0e0e1a", color: "#fff", overflow: "hidden" }}>
@@ -678,6 +742,9 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
               {pendingReactionRoll ? `⚠️ Você está sendo atacado por ${pendingReactionRoll.attackerName}` : isMyTurn ? `⚔️ ${activeCharacter.name} — É o SEU TURNO!` : `Aguardando o turno de ${activeCharacter.name}...`}
             </Typography>
             {actionUsed && <Typography fontSize={12} color="#ffa726" mt={0.5}>⚡ Ação principal já utilizada neste turno</Typography>}
+            {isMyTurn && !actionUsed && attackLimit > 1 && (
+              <Typography fontSize={12} color="#4fc3f7" mt={0.5}>⚔️ Ataques restantes nesta rodada: {attacksLeft}/{attackLimit}</Typography>
+            )}
             {!isMyTurn && !isMaster && myParticipant && <Typography fontSize={11} color="#6b7280" mt={0.5}>Suas habilidades — disponíveis no seu turno</Typography>}
           </Box>
 
@@ -705,11 +772,11 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                       onClick={() => {
                         if (!canAct || isLoading || (preset.requiresTurn && actionUsed)) return;
                         if (!needsTarget) {
-                          useMainAction({ presetId: preset.id, targetIds: [], characterId: activeCharacter.id });
+                          useMainAction({ presetId: preset.id, targetIds: [], characterId: activeCharacter.id, presetType: preset.type });
                           return;
                         }
                         if (isArmed && selectedTargets.length > 0) {
-                          useMainAction({ presetId: preset.id, targetIds: selectedTargets, characterId: activeCharacter.id });
+                          useMainAction({ presetId: preset.id, targetIds: selectedTargets, characterId: activeCharacter.id, presetType: preset.type });
                           setSelectedPresetId(null);
                         } else {
                           if (selectedPresetId !== preset.id) clearTargets();
@@ -734,6 +801,20 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
               );
             })}
 
+            {transformHasForms && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<AutorenewIcon />}
+                disabled={formLoading || !!pendingReactionRoll}
+                onClick={openFormMenu}
+                sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
+              >
+                {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
+                Transformar
+              </Button>
+            )}
+
             {isMyTurn && (
               <Button variant="outlined" disabled={!canEndTurn || isLoading} onClick={endTurn}>
                 {isLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
@@ -741,6 +822,35 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
               </Button>
             )}
           </Stack>
+
+          {/* Menu de formas */}
+          <Menu
+            anchorEl={formMenuAnchor}
+            open={!!formMenuAnchor}
+            onClose={() => setFormMenuAnchor(null)}
+            PaperProps={{ sx: { background: "#16162a", border: "1px solid rgba(124,58,237,0.35)" } }}
+          >
+            {formGroupData?.options.map((opt) => {
+              const isActive = opt.id === formGroupData.activeId;
+              return (
+                <MenuItem
+                  key={opt.id}
+                  disabled={isActive}
+                  onClick={() => switchFormInCombat(opt.id)}
+                  sx={{ fontSize: 13, color: isActive ? "#a78bfa" : "#cdd1e0", gap: 1 }}
+                >
+                  <Avatar
+                    src={opt.image ? `/characters/${opt.image}` : undefined}
+                    sx={{ width: 24, height: 24, fontSize: 11 }}
+                  >
+                    {opt.name[0]}
+                  </Avatar>
+                  {opt.name}
+                  {isActive && <Chip label="Ativa" size="small" sx={{ ml: 1, height: 16, fontSize: 9 }} />}
+                </MenuItem>
+              );
+            })}
+          </Menu>
 
           {canAct && !selectedPresetId && (
             <Typography fontSize={12} color="#ff9800">Selecione uma habilidade acima para agir.</Typography>
@@ -809,18 +919,33 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
               <LinearProgress variant="determinate" value={((pendingReactionRoll?.currentTargetIndex ?? 0) / (pendingReactionRoll?.totalTargets ?? 1)) * 100} sx={{ height: 6, borderRadius: 1 }} />
             )}
 
-            <Typography variant="body2" color="text.secondary">Escolha sua reação:</Typography>
+            {reactionBlocked ? (
+              <Typography variant="body2" sx={{ color: "#f87171", fontWeight: 600 }}>
+                🚫 Limite de {reactionLimit} reação(ões) por rodada atingido — não é possível reagir a este ataque.
+              </Typography>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Escolha sua reação:
+                {reactionLimit != null && (
+                  <Typography component="span" variant="caption" sx={{ ml: 1, color: "#ffb74d" }}>
+                    ({Math.max(0, reactionLimit - (reactionParticipant?.reactionsUsed ?? 0))} de {reactionLimit} restante(s) nesta rodada)
+                  </Typography>
+                )}
+              </Typography>
+            )}
             <Stack direction="row" spacing={1} flexWrap="wrap">
               {pendingReactionRoll?.currentReactionTarget?.blockPresetId && (
-                <Button variant="contained" color="warning" size="small" onClick={() => resolveReaction(pendingReactionRoll.id, "BLOCK")}>🛡️ Bloquear</Button>
+                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "BLOCK")}>🛡️ Bloquear</Button>
               )}
               {pendingReactionRoll?.currentReactionTarget?.dodgePresetId && (
-                <Button variant="contained" color="warning" size="small" onClick={() => resolveReaction(pendingReactionRoll.id, "DODGE")}>💨 Esquivar</Button>
+                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "DODGE")}>💨 Esquivar</Button>
               )}
               {pendingReactionRoll?.currentReactionTarget?.counterAttackPresetId && (
-                <Button variant="contained" color="warning" size="small" onClick={() => resolveReaction(pendingReactionRoll.id, "COUNTER_ATTACK")}>⚔️ Contra-atacar</Button>
+                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "COUNTER_ATTACK")}>⚔️ Contra-atacar</Button>
               )}
-              <Button color="error" size="small" onClick={() => resolveReaction(pendingReactionRoll.id, "SKIP")}>✗ Não reagir</Button>
+              <Button color="error" size="small" variant={reactionBlocked ? "contained" : "text"} onClick={() => resolveReaction(pendingReactionRoll.id, "SKIP")}>
+                {reactionBlocked ? "Absorver o dano" : "✗ Não reagir"}
+              </Button>
             </Stack>
           </Stack>
         </DialogContent>

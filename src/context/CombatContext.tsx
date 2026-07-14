@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { useCampaign } from "./CampaignContext";
 import api from "../lib/api";
 import { toast } from "react-toastify";
 import { AxiosError } from "axios";
@@ -21,6 +22,8 @@ export type CombatContextType = {
     combat: any | null;
     isMyTurn: boolean;
     actionUsed: boolean;
+    attackLimit: number;
+    attacksLeft: number;
     selectedTargets: string[];
     pendingReactionRoll: any | null;
     myCharacterIds: any;
@@ -34,6 +37,7 @@ export type CombatContextType = {
         presetId: string;
         targetIds: string[];
         characterId: string;
+        presetType?: string;
     }) => Promise<void>;
     startCombat: (participantIds: string[]) => Promise<void>;
     startTurn: (combatId?: string) => Promise<void>;
@@ -56,10 +60,13 @@ export function CombatProvider({
     children: React.ReactNode;
 }) {
     const { user, loading: authLoading } = useAuth();
+    const { activeCampaign } = useCampaign();
     const isMaster = user?.role === "MESTRE";
 
     const [combat, setCombat] = useState<any | null>(null);
     const [actionUsed, setActionUsed] = useState(false);
+    // Ataques disparados nesta sessão que o servidor ainda não refletiu (otimismo)
+    const [optimisticAttacks, setOptimisticAttacks] = useState(0);
     const optimisticActionRef = useRef(false);
     const [myCharacterIds, setMyCharacterIds] = useState<string[]>([]);
     const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
@@ -215,9 +222,18 @@ export function CombatProvider({
         if (!activeTurn) {
             optimisticActionRef.current = false;
             setActionUsed(false);
+            setOptimisticAttacks(0);
             setSelectedTargets([]);
         }
     }, [activeTurn?.id]);
+
+    /* Limite de ataques por rodada: base 1; ataque extra é habilidade do personagem */
+    const attackLimit: number = activeCharacter?.maxAttacksPerRound ?? 1;
+    const attacksUsedTotal = (activeParticipant?.attacksUsed ?? 0) + optimisticAttacks;
+    const attacksLeft = Math.max(0, attackLimit - attacksUsedTotal);
+
+    // "Ação usada" efetiva: usou ação não-ataque OU esgotou os ataques da rodada
+    const actionUsedEffective = actionUsed || attacksLeft <= 0;
 
     const controlledCharacterIds =
         ordered
@@ -230,7 +246,7 @@ export function CombatProvider({
     /* UI actions */
     function selectTarget(id: string, allowMultiple = false) {
         if (!isMyTurn) return;
-        if (actionUsed) return;
+        if (actionUsedEffective) return;
         if (pendingReactionRoll) return;
         setSelectedTargets((prev) => {
             if (prev.includes(id)) return prev.filter((t) => t !== id);
@@ -247,14 +263,23 @@ export function CombatProvider({
         presetId,
         targetIds,
         characterId,
+        presetType,
     }: {
         presetId: string;
         targetIds: string[];
         characterId: string;
+        presetType?: string;
     }) {
         if (!combat || !isMyTurn) return;
-        if (actionUsed || optimisticActionRef.current) return;
         if (pendingReactionRoll) return;
+
+        // Ataques consomem "slots" da rodada; demais ações seguem a regra clássica de 1 por turno
+        const isAttack = presetType === "ATTACK";
+        if (isAttack) {
+            if (attacksLeft <= 0) return;
+        } else {
+            if (actionUsed || optimisticActionRef.current) return;
+        }
 
         const turnId = activeTurnIdRef.current ?? activeTurn?.id;
         if (!turnId) {
@@ -263,8 +288,12 @@ export function CombatProvider({
         }
 
         try {
-            optimisticActionRef.current = true;
-            setActionUsed(true);
+            if (isAttack) {
+                setOptimisticAttacks((n) => n + 1);
+            } else {
+                optimisticActionRef.current = true;
+                setActionUsed(true);
+            }
             setIsLoading(true);
 
             await api.post("/roll", {
@@ -277,9 +306,15 @@ export function CombatProvider({
 
             setSelectedTargets([]);
             await loadCombat();
+            // Servidor agora reflete o ataque em participant.attacksUsed
+            if (isAttack) setOptimisticAttacks(0);
         } catch (err) {
-            optimisticActionRef.current = false;
-            setActionUsed(false);
+            if (isAttack) {
+                setOptimisticAttacks((n) => Math.max(0, n - 1));
+            } else {
+                optimisticActionRef.current = false;
+                setActionUsed(false);
+            }
             toast.error(apiErrorMessage(err, "Erro ao usar ação"));
         } finally {
             setIsLoading(false);
@@ -424,7 +459,9 @@ export function CombatProvider({
             value={{
                 combat,
                 isMyTurn,
-                actionUsed,
+                actionUsed: actionUsedEffective,
+                attackLimit,
+                attacksLeft,
                 selectedTargets,
                 pendingReactionRoll,
                 myCharacterIds,

@@ -12,6 +12,7 @@ import {
   Box,
   Typography,
   Avatar,
+  MenuItem,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
@@ -19,8 +20,11 @@ import { Character } from "../../types/types";
 import {
   calculateMaxLife,
   calculateDefense,
+  DEFAULT_MAX_LIFE_FORMULA,
+  DEFAULT_DEFENSE_FORMULA,
 } from "../../lib/characterCalculations";
 import { useAuth } from "../../context/AuthContext";
+import { useCampaign } from "../../context/CampaignContext";
 import { ImagePicker } from "./ImagePicker";
 
 type Props = {
@@ -43,6 +47,8 @@ const BLANK = {
   vigor: 0,
   intellect: 0,
   presence: 0,
+  maxReactionsPerRound: "" as string | number,
+  maxAttacksPerRound: "" as string | number,
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -55,9 +61,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function CharacterStatsModal({ open, character, onClose }: Props) {
   const { user } = useAuth();
+  const { activeCampaign } = useCampaign();
   const isAdmin = !!user?.isAdmin;
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
+
+  const maxLifeFormula = activeCampaign?.maxLifeFormula ?? DEFAULT_MAX_LIFE_FORMULA;
+  const defenseFormula = activeCampaign?.defenseFormula ?? DEFAULT_DEFENSE_FORMULA;
+  const isMasterOfTable = isAdmin || (!!user && activeCampaign?.masterId === user.id);
 
   useEffect(() => {
     if (character && open) {
@@ -75,6 +86,8 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         vigor: character.vigor,
         intellect: character.intellect,
         presence: character.presence,
+        maxReactionsPerRound: character.maxReactionsPerRound ?? "",
+        maxAttacksPerRound: character.maxAttacksPerRound ?? "",
       });
     }
   }, [character, open]);
@@ -87,12 +100,20 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
     onClose();
   };
 
+  const currentAttributes = () => ({
+    strength: Number(form.strength),
+    agility: Number(form.agility),
+    vigor: Number(form.vigor),
+    intellect: Number(form.intellect),
+    presence: Number(form.presence),
+  });
+
   const autoCalculateMaxLife = () => {
-    update("maxLife", calculateMaxLife(Number(form.strength), Number(form.vigor)));
+    update("maxLife", calculateMaxLife(currentAttributes(), activeCampaign?.maxLifeFormula));
   };
 
   const autoCalculateDefense = () => {
-    update("baseDefense", calculateDefense(Number(form.agility), Number(form.vigor)));
+    update("baseDefense", calculateDefense(currentAttributes(), activeCampaign?.defenseFormula));
   };
 
   const handleSave = async () => {
@@ -116,6 +137,14 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         vigor: Number(form.vigor),
         intellect: Number(form.intellect),
         presence: Number(form.presence),
+        ...(isMasterOfTable
+          ? {
+              maxReactionsPerRound:
+                form.maxReactionsPerRound === "" ? null : Number(form.maxReactionsPerRound),
+              maxAttacksPerRound:
+                form.maxAttacksPerRound === "" ? null : Number(form.maxAttacksPerRound),
+            }
+          : {}),
       });
       handleClose();
     } finally {
@@ -175,7 +204,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 onClick={autoCalculateMaxLife}
                 sx={{ textTransform: "none", fontSize: "0.75rem" }}
               >
-                Auto: 25 + (For×2) + (Vig×3)
+                Auto: {maxLifeFormula}
               </Button>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -208,7 +237,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 onClick={autoCalculateDefense}
                 sx={{ textTransform: "none", fontSize: "0.75rem" }}
               >
-                Auto: 3 + (Agi + Vig)
+                Auto: {defenseFormula}
               </Button>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -268,6 +297,50 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
               onChange={(e) => update("presence", e.target.value)}
             />
           </Stack>
+
+          {/* Limites por rodada — apenas mestre/admin */}
+          {isMasterOfTable && (
+            <>
+              <Divider />
+              <SectionLabel>Limites por rodada (habilidades deste personagem)</SectionLabel>
+              <Typography variant="caption" color="text.secondary">
+                Ataque extra e reações além da regra da mesa
+                {activeCampaign
+                  ? ` (mesa: ${activeCampaign.reactionsPerRound == null ? "reações ilimitadas" : `${activeCampaign.reactionsPerRound} reação(ões)`} / todos começam com 1 ataque)`
+                  : ""}
+              </Typography>
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  select
+                  label="Reações por rodada"
+                  value={form.maxReactionsPerRound}
+                  onChange={(e) => update("maxReactionsPerRound", e.target.value)}
+                  fullWidth
+                  SelectProps={{ displayEmpty: true }}
+                  InputLabelProps={{ shrink: true }}
+                >
+                  <MenuItem value="">Usa a regra da mesa</MenuItem>
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <MenuItem key={n} value={n}>{n}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Ataques por rodada"
+                  value={form.maxAttacksPerRound}
+                  onChange={(e) => update("maxAttacksPerRound", e.target.value)}
+                  fullWidth
+                  SelectProps={{ displayEmpty: true }}
+                  InputLabelProps={{ shrink: true }}
+                >
+                  <MenuItem value="">Padrão (1 ataque)</MenuItem>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <MenuItem key={n} value={n}>{n}</MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+            </>
+          )}
 
           <Divider />
 

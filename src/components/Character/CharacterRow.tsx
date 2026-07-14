@@ -19,6 +19,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useState } from "react";
@@ -31,6 +32,7 @@ type Props = {
   onAccess: () => void;
   onDelete?: () => void;
   onClone?: () => void;
+  onFormCreated?: () => void;
   onHide?: () => void;
   isHidden?: boolean;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -104,6 +106,7 @@ export function CharacterRow({
   onAccess,
   onDelete,
   onClone,
+  onFormCreated,
   onHide,
   isHidden,
   onDragStart,
@@ -137,6 +140,22 @@ export function CharacterRow({
       onClone?.();
     } catch {
       toast.error("Erro ao clonar personagem");
+    } finally {
+      setCloning(false);
+    }
+  }
+
+  async function handleCreateForm() {
+    const name = window.prompt("Nome da nova forma (ex: Zumbi Transformado):");
+    if (!name?.trim()) return;
+    setCloning(true);
+    try {
+      const primaryId = character.formGroup?.primaryId ?? character.id;
+      await api.post(`/characters/${primaryId}/forms`, { name: name.trim() });
+      toast.success(`Forma "${name.trim()}" criada — edite a ficha dela trocando de forma`);
+      onFormCreated?.();
+    } catch {
+      toast.error("Erro ao criar forma");
     } finally {
       setCloning(false);
     }
@@ -342,6 +361,21 @@ export function CharacterRow({
                   ) : (
                     <ContentCopyIcon sx={{ fontSize: 16 }} />
                   )}
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+
+          {onFormCreated && (
+            <Tooltip title="Criar forma alternativa (transformação)">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleCreateForm}
+                  disabled={cloning}
+                  sx={{ color: "#7c3aed", "&:hover": { color: "#a78bfa" } }}
+                >
+                  <AutorenewIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               </span>
             </Tooltip>

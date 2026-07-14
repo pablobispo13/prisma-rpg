@@ -15,19 +15,44 @@ import {
 import { Character } from "../../types/types";
 import EditIcon from "@mui/icons-material/Edit";
 import ShieldIcon from "@mui/icons-material/Shield";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
 import { deepOrange } from "@mui/material/colors";
+import { useState } from "react";
+import { toast } from "react-toastify";
+import api from "../../lib/api";
 
 type Props = {
   character: Character;
   loading?: boolean;
   onEditAction?: () => void;
+  canSwitchForm?: boolean;
+  onFormSwitched?: () => void;
 };
 
 export function CharacterHeaderCard({
   character,
   loading = false,
   onEditAction,
+  canSwitchForm = false,
+  onFormSwitched,
 }: Props) {
+  const [switchingForm, setSwitchingForm] = useState(false);
+  const formGroup = character.formGroup;
+
+  const handleSwitchForm = async (formId: string) => {
+    if (!formGroup || switchingForm || formId === formGroup.activeId) return;
+    setSwitchingForm(true);
+    try {
+      await api.post(`/characters/${formGroup.primaryId}/switch-form`, { formId });
+      const target = formGroup.options.find((o) => o.id === formId);
+      toast.success(`Transformado em ${target?.name ?? "outra forma"}`);
+      onFormSwitched?.();
+    } catch {
+      // erro já exibido pelo interceptor da api
+    } finally {
+      setSwitchingForm(false);
+    }
+  };
   return (
     <Card
       sx={{
@@ -131,6 +156,44 @@ export function CharacterHeaderCard({
               </Button>
             )}
           </Stack>
+
+          {/* Formas alternativas */}
+          {formGroup && formGroup.options.length > 1 && !loading && (
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <AutorenewIcon sx={{ fontSize: 16, color: "#a78bfa" }} />
+              <Typography variant="caption" color="text.secondary">
+                Forma:
+              </Typography>
+              {formGroup.options.map((opt) => {
+                const isActive = opt.id === formGroup.activeId;
+                return (
+                  <Chip
+                    key={opt.id}
+                    label={opt.name}
+                    size="small"
+                    avatar={
+                      opt.image ? (
+                        <Avatar src={`/characters/${opt.image}`} />
+                      ) : undefined
+                    }
+                    onClick={
+                      canSwitchForm && !isActive && !switchingForm
+                        ? () => handleSwitchForm(opt.id)
+                        : undefined
+                    }
+                    disabled={switchingForm}
+                    sx={{
+                      fontSize: 11,
+                      backgroundColor: isActive ? "rgba(124,58,237,0.35)" : "rgba(255,255,255,0.06)",
+                      color: isActive ? "#c4b5fd" : "#9aa0b5",
+                      border: isActive ? "1px solid rgba(167,139,250,0.6)" : "1px solid transparent",
+                      cursor: canSwitchForm && !isActive ? "pointer" : "default",
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+          )}
 
           <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.1)" }} />
 

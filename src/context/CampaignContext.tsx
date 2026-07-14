@@ -20,6 +20,9 @@ export type CampaignSummary = {
   description: string | null;
   image: string | null;
   archivedAt: string | null;
+  defenseFormula: string | null;
+  maxLifeFormula: string | null;
+  reactionsPerRound: number | null;
   masterId: string;
   master: { id: string; username: string };
   members: { id: string; user: { id: string; username: string } }[];

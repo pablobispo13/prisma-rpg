@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 
 export default function Mesa() {
   const { user } = useAuth();
-  const { activeCampaign, loading: campaignLoading } = useCampaign();
+  const { activeCampaign, campaigns, loading: campaignLoading } = useCampaign();
   const router = useRouter();
   const searchParams = useSearchParams();
   const MAX_TENTATIVAS = 3;
@@ -35,11 +35,15 @@ export default function Mesa() {
     return () => clearTimeout(timer);
   }, [user, tentativas]);
 
-  // Sem mesa ativa: redireciona pra tela de seleção/criação
+  // Sem mesa ativa: usuário novo (nenhuma mesa) vê o tour de boas-vindas;
+  // quem já tem mesas vai pra tela de seleção
   useEffect(() => {
     if (!user || campaignLoading) return;
-    if (!activeCampaign) router.replace("/protected/mesas");
-  }, [user, campaignLoading, activeCampaign, router]);
+    if (!activeCampaign) {
+      const hasAnyCampaign = campaigns.some((c) => !c.archivedAt);
+      router.replace(hasAnyCampaign ? "/protected/mesas" : "/protected/bem-vindo");
+    }
+  }, [user, campaignLoading, activeCampaign, campaigns, router]);
 
   if (!user || campaignLoading) {
     return <>Carregando...</>;

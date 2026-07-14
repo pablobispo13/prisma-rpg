@@ -23,6 +23,15 @@ export type Character = {
     intellect: number;
     presence: number;
 
+    // Overrides dos limites da mesa (null = usa o da campanha)
+    maxReactionsPerRound?: number | null;
+    maxAttacksPerRound?: number | null;
+
+    // Formas alternativas (transformações)
+    primaryFormId?: string | null;
+    activeFormId?: string | null;
+    formGroup?: CharacterFormGroup | null;
+
     // Sistemas
     inventory: CharacterInventory[];
     presets: ActionPresetType[];
@@ -31,6 +40,12 @@ export type Character = {
     // Histórico
     actionLogs: ActionLog[]
 };
+export type CharacterFormGroup = {
+    primaryId: string;
+    activeId: string;
+    options: { id: string; name: string; image: string | null }[];
+};
+
 export type Log = {
     id: string;
     name: string;

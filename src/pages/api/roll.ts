@@ -206,6 +206,37 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (!preset)
         return res.status(404).json({ message: "Preset inválido" });
 
+    /* =====================================================
+       LIMITE DE ATAQUES POR RODADA (só em combate)
+       Base: 1 ataque; personagens com habilidade de ataque extra
+       têm Character.maxAttacksPerRound configurado pelo mestre.
+    ===================================================== */
+    let attackerParticipant: { id: string; attacksUsed: number } | null = null;
+    let campaignLimits: { reactionsPerRound: number | null } | null = null;
+
+    if (preset.type === ActionType.ATTACK && combatId) {
+        campaignLimits = await prisma.campaign.findUnique({
+            where: { id: character.campaignId },
+            select: { reactionsPerRound: true },
+        });
+
+        attackerParticipant = await prisma.combatParticipant.findFirst({
+            where: { combatId, characterId: character.id },
+            select: { id: true, attacksUsed: true },
+        });
+
+        if (attackerParticipant) {
+            const attackLimit = character.maxAttacksPerRound ?? 1;
+
+            if (attackerParticipant.attacksUsed >= attackLimit) {
+                return res.status(400).json({
+                    message: `Limite de ${attackLimit} ataque(s) por rodada atingido`,
+                    code: "ATTACK_LIMIT_REACHED",
+                });
+            }
+        }
+    }
+
     const baseAttribute = getAttributeValue(character, preset.attribute);
 
     // Load all active caster effects
@@ -325,9 +356,33 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 continue;
             }
 
+            // Alvo sem reações restantes na rodada não entra na fila de reação:
+            // toma o dano direto (auto-absorve) para não travar os demais alvos
+            const targetReactionLimit =
+                target.maxReactionsPerRound ?? campaignLimits?.reactionsPerRound ?? null;
+            const reactionsExhausted =
+                combatParticipant != null &&
+                targetReactionLimit != null &&
+                (combatParticipant.reactionsUsed ?? 0) >= targetReactionLimit;
+
             const shouldOpenReaction =
                 preset.type === ActionType.ATTACK &&
+                !reactionsExhausted &&
                 !!(target.dodgePresetId || target.blockPresetId || target.counterAttackPresetId);
+
+            if (reactionsExhausted && preset.type === ActionType.ATTACK) {
+                await tx.actionLog.create({
+                    data: {
+                        type: LogType.REACTION,
+                        message: `${target.name} não tinha reações restantes nesta rodada e absorveu o ataque`,
+                        characterId: character.id,
+                        targetId,
+                        rollId: created.id,
+                        combatId: combatId ?? null,
+                        turnId: turnId ?? null,
+                    },
+                });
+            }
 
             const isHealType = preset.type === ActionType.HEAL || preset.type === ActionType.SUPPORT;
             let afterLife = beforeLife;
@@ -524,6 +579,13 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 data: {
                     pendingReactionTargets: pendingReactionTargets as any,
                 },
+            });
+        }
+
+        if (attackerParticipant) {
+            await tx.combatParticipant.update({
+                where: { id: attackerParticipant.id },
+                data: { attacksUsed: { increment: 1 } },
             });
         }
 

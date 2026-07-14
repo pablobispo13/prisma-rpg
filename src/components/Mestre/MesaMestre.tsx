@@ -501,6 +501,7 @@ export default function MesaMestre() {
                           character={char}
                           onAccess={() => openSheet(char)}
                           onDelete={() => fetchCharacters()}
+                          onFormCreated={() => fetchCharacters()}
                         />
                       ))
                     )}
@@ -586,6 +587,7 @@ export default function MesaMestre() {
                               fetchCharacters();
                             }}
                             onClone={() => fetchCharacters()}
+                            onFormCreated={() => fetchCharacters()}
                             onHide={() => toggleHide(char.id)}
                             isHidden={false}
                             onDragStart={!isSearching ? handleDragStart(char.id) : undefined}
@@ -618,6 +620,7 @@ export default function MesaMestre() {
                                 fetchCharacters();
                               }}
                               onClone={() => fetchCharacters()}
+                              onFormCreated={() => fetchCharacters()}
                               onHide={() => toggleHide(char.id)}
                               isHidden={true}
                               onDragStart={handleDragStart(char.id)}
@@ -648,12 +651,14 @@ export default function MesaMestre() {
             </Stack>
           </Paper>
 
-          {/* Combat selector */}
+          {/* Combat selector — inimigos ocultos ficam de fora */}
           <CombatProvider combatId={undefined}>
             <CharacterCombatSelector
               open={openSelector}
               onClose={() => setOpenSelector(false)}
-              characters={[...players, ...enemies]}
+              players={players}
+              enemies={sortedEnemies.filter((c) => !hiddenEnemyIds.includes(c.id))}
+              onRefresh={fetchCharacters}
               onCombatCreated={() => reloadCombats()}
             />
           </CombatProvider>

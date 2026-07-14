@@ -24,6 +24,8 @@ import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCampaign, CampaignSummary } from "../../context/CampaignContext";
 import { campaignSchema, CampaignForm, joinSchema, JoinForm } from "../../validation/campaign";
+import { DEFAULT_DEFENSE_FORMULA, DEFAULT_MAX_LIFE_FORMULA } from "../../lib/characterCalculations";
+import { FORMULA_VARIABLES } from "../../lib/formula";
 
 const EXPIRATION_OPTIONS = [
   { label: "Não expira", value: 0 },
@@ -45,6 +47,9 @@ export default function MesasPage() {
 
   const [inviteExpHours, setInviteExpHours] = useState<number>(24);
   const [inviteMaxUses, setInviteMaxUses] = useState<string>("");
+
+  // Limite de reações por rodada (edição da mesa)
+  const [editReactionsPerRound, setEditReactionsPerRound] = useState<string>("");
 
   // Admin: atribuir mesa a um mestre ao criar
   type AdminUserOption = {
@@ -84,7 +89,7 @@ export default function MesasPage() {
   });
   const editForm = useForm<CampaignForm>({
     resolver: yupResolver(campaignSchema),
-    defaultValues: { name: "", description: "" },
+    defaultValues: { name: "", description: "", defenseFormula: "", maxLifeFormula: "" },
   });
   const joinForm = useForm<JoinForm>({
     resolver: yupResolver(joinSchema),
@@ -195,13 +200,24 @@ export default function MesasPage() {
 
   const openEditDialog = (c: CampaignSummary) => {
     setEditTarget(c);
-    editForm.reset({ name: c.name, description: c.description ?? "" });
+    editForm.reset({
+      name: c.name,
+      description: c.description ?? "",
+      defenseFormula: c.defenseFormula ?? "",
+      maxLifeFormula: c.maxLifeFormula ?? "",
+    });
+    setEditReactionsPerRound(c.reactionsPerRound == null ? "" : String(c.reactionsPerRound));
   };
 
   const handleEditSave = editForm.handleSubmit(async (values) => {
     if (!editTarget) return;
     try {
-      await api.patch(`/campaigns/${editTarget.id}`, values);
+      await api.patch(`/campaigns/${editTarget.id}`, {
+        ...values,
+        defenseFormula: values.defenseFormula ?? null,
+        maxLifeFormula: values.maxLifeFormula ?? null,
+        reactionsPerRound: editReactionsPerRound === "" ? null : Number(editReactionsPerRound),
+      });
       toast.success("Mesa atualizada");
       setEditTarget(null);
       await refresh();
@@ -525,6 +541,56 @@ export default function MesasPage() {
                     error={!!fieldState.error} helperText={fieldState.error?.message} />
                 )}
               />
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Fórmulas de atributos derivados
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Deixe em branco para usar a fórmula padrão. Variáveis: {FORMULA_VARIABLES.join(", ")}.
+                Operadores: + - * / e parênteses.
+              </Typography>
+              <Controller
+                name="defenseFormula"
+                control={editForm.control}
+                render={({ field, fieldState }) => (
+                  <TextField {...field} value={field.value ?? ""} label="Fórmula de defesa"
+                    fullWidth placeholder={DEFAULT_DEFENSE_FORMULA}
+                    error={!!fieldState.error}
+                    helperText={fieldState.error?.message ?? `Padrão: ${DEFAULT_DEFENSE_FORMULA}`} />
+                )}
+              />
+              <Controller
+                name="maxLifeFormula"
+                control={editForm.control}
+                render={({ field, fieldState }) => (
+                  <TextField {...field} value={field.value ?? ""} label="Fórmula de vida máxima"
+                    fullWidth placeholder={DEFAULT_MAX_LIFE_FORMULA}
+                    error={!!fieldState.error}
+                    helperText={fieldState.error?.message ?? `Padrão: ${DEFAULT_MAX_LIFE_FORMULA}`} />
+                )}
+              />
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Reações em combate
+              </Typography>
+              <TextField
+                select
+                label="Reações por rodada"
+                value={editReactionsPerRound}
+                onChange={(e) => setEditReactionsPerRound(e.target.value)}
+                fullWidth
+                helperText="Quantas reações (esquiva/bloqueio/contra-ataque) cada personagem pode usar por rodada"
+              >
+                <MenuItem value="">Ilimitadas (reage a todos os ataques)</MenuItem>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <MenuItem key={n} value={String(n)}>{n}</MenuItem>
+                ))}
+              </TextField>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Exceções individuais (ex: habilidade com reação extra ou segundo ataque) são configuradas na ficha de cada personagem.
+              </Typography>
             </Stack>
           </DialogContent>
           <DialogActions>

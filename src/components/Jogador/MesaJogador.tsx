@@ -26,7 +26,10 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
       const characters: Character[] = res.data.characters;
 
       if (forcedCharacterId) {
-        const found = characters.find((c) => c.id === forcedCharacterId);
+        // Personagem transformado aparece na lista com o id da forma ativa
+        const found = characters.find(
+          (c) => c.id === forcedCharacterId || c.formGroup?.primaryId === forcedCharacterId
+        );
         if (found) {
           setCharacter(found);
           return;
@@ -75,8 +78,10 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
       )}
 
       <CharacterSheet
+        key={character.id}
         characterLoaded={character}
         isMasterView={isSpectator}
+        onFormSwitched={() => getCharacters()}
       />
     </>
   );

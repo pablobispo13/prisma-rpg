@@ -118,8 +118,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (!participant) return res.status(400).json({ message: "Nenhum participante para a vez atual" });
 
             // Idempotência: retorna turno já existente para evitar duplicatas
+            // (Mongo: turno aberto pode ter endedAt null OU ausente no documento)
             const existingTurn = await prisma.combatTurn.findFirst({
-                where: { combatId, characterId: participant.characterId, turnNumber: combat.round, endedAt: null },
+                where: {
+                    combatId,
+                    characterId: participant.characterId,
+                    turnNumber: combat.round,
+                    OR: [{ endedAt: null }, { endedAt: { isSet: false } }],
+                },
                 include: { rollResults: true, logs: true },
             });
             if (existingTurn) {
@@ -127,7 +133,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             }
 
             const turn = await prisma.combatTurn.create({
-                data: { combatId, characterId: participant.characterId, turnNumber: combat.round },
+                // endedAt: null explícito para filtros de igualdade funcionarem no Mongo
+                data: { combatId, characterId: participant.characterId, turnNumber: combat.round, endedAt: null },
                 include: { rollResults: true, logs: true }
             });
             const activeEffects = await prisma.characterEffect.findMany({
@@ -206,6 +213,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 }
                 await prisma.combat.update({ where: { id: combatId }, data: { currentTurnIndex: nextIndex, round: nextRound } });
 
+                // Nova rodada: zera contadores de ataques/reações de todos
+                if (nextRound > combat.round) {
+                    await prisma.combatParticipant.updateMany({
+                        where: { combatId },
+                        data: { attacksUsed: 0, reactionsUsed: 0 },
+                    });
+                }
+
                 const turnFull = await prisma.combatTurn.findUnique({ where: { id: turn.id }, include: { rollResults: true, logs: true } });
                 notifyCombatUpdate(combatId);
                 res.status(201).json({ ...turnFull, skipped: true, reason: "STUN" });
@@ -278,6 +293,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 where: { id: combatId },
                 data: { currentTurnIndex: nextIndex, round: nextRound, hpSnapshots: updatedSnapshots }
             });
+
+            // Nova rodada: zera contadores de ataques/reações de todos
+            if (nextRound > combat.round) {
+                await prisma.combatParticipant.updateMany({
+                    where: { combatId },
+                    data: { attacksUsed: 0, reactionsUsed: 0 },
+                });
+            }
 
             await prisma.actionLog.create({
                 data: { type: LogType.TURN_END, message: `Turno finalizado`, combatId, turnId: turn.id }

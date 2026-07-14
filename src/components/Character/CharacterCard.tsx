@@ -26,6 +26,7 @@ type Props = {
   onAcess: () => void;
   onDelete?: () => void;
   onClone?: () => void;
+  onFormCreated?: () => void;
 };
 
 export function CharacterCard({
@@ -33,6 +34,7 @@ export function CharacterCard({
   onAcess = () => {},
   onDelete,
   onClone,
+  onFormCreated,
 }: Props) {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [cloning, setCloning] = useState(false);
@@ -58,6 +60,22 @@ export function CharacterCard({
       onClone?.();
     } catch {
       toast.error("Erro ao clonar personagem");
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  const handleCreateForm = async () => {
+    const name = window.prompt("Nome da nova forma (ex: Zumbi Transformado):");
+    if (!name?.trim()) return;
+    try {
+      setCloning(true);
+      const primaryId = character.formGroup?.primaryId ?? character.id;
+      await api.post(`/characters/${primaryId}/forms`, { name: name.trim() });
+      toast.success(`Forma "${name.trim()}" criada — edite a ficha dela trocando de forma`);
+      onFormCreated?.();
+    } catch {
+      toast.error("Erro ao criar forma");
     } finally {
       setCloning(false);
     }
@@ -182,6 +200,18 @@ export function CharacterCard({
             onClick={handleClone}
           >
             📋
+          </Button>
+        )}
+        {onFormCreated && (
+          <Button
+            variant="outlined"
+            size="small"
+            color="secondary"
+            title="Criar forma alternativa (transformação)"
+            disabled={cloning}
+            onClick={handleCreateForm}
+          >
+            🜂
           </Button>
         )}
         <Button

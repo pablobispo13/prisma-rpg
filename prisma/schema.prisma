@@ -108,6 +108,17 @@ model Campaign {
   createdAt   DateTime @default(now())
   archivedAt  DateTime?
 
+  // Fórmulas de atributos derivados configuráveis pelo mestre.
+  // null = usa a fórmula padrão do sistema. Variáveis: forca, agilidade,
+  // vigor, intelecto, presenca (ou equivalentes em inglês).
+  defenseFormula String?
+  maxLifeFormula String?
+
+  // Limite de reações em combate por rodada (configurável pelo mestre).
+  // null = ilimitado (comportamento clássico). Ataques extras são concedidos
+  // por personagem via Character.maxAttacksPerRound (base: 1 por rodada).
+  reactionsPerRound Int?
+
   masterId String @db.ObjectId
   master   User   @relation("CampaignMaster", fields: [masterId], references: [id])
 
@@ -163,6 +174,20 @@ model Character {
   presence  Int
 
   baseDefense   Int           @default(0)
+
+  // Overrides por personagem dos limites da mesa (null = usa o da campanha).
+  // Permite habilidades tipo "reage 2x por rodada" ou "ataque extra".
+  maxReactionsPerRound Int?
+  maxAttacksPerRound   Int?
+
+  // Formas alternativas (ex: transformação em zumbi): cada forma é um
+  // Character "irmão" completo apontando para o principal. Formas não
+  // aparecem nas listagens; o principal guarda qual ficha está ativa.
+  primaryFormId String?     @db.ObjectId
+  primaryForm   Character?  @relation("CharacterForms", fields: [primaryFormId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  forms         Character[] @relation("CharacterForms")
+  activeFormId  String?     @db.ObjectId // null = a própria ficha principal
+
   history       String?
   notes         String?
   image         String?
@@ -396,6 +421,10 @@ model CombatParticipant {
   tempHp      Int @default(0)
   initiative  Int?
   turnOrder   Int?
+
+  // Contadores da rodada atual — zerados quando a rodada avança (control.ts)
+  attacksUsed   Int @default(0)
+  reactionsUsed Int @default(0)
 }
 
 ///////////////////////

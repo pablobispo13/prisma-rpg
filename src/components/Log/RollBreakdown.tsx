@@ -13,6 +13,14 @@ interface RollBreakdownProps {
   damageModifier?: number;
 }
 
+/** Cor do valor de um dado individual: crítico natural verde, 1 natural vermelho. */
+function dieColor(value: number, diceFormula: string): string {
+  const isD20 = /d20/i.test(diceFormula);
+  if (isD20 && value === 20) return "#4ade80";
+  if (isD20 && value === 1) return "#f87171";
+  return "#60a5fa";
+}
+
 export function RollBreakdown({
   roll,
   succeeded,
@@ -24,7 +32,21 @@ export function RollBreakdown({
   const diceSum = roll.rolls.reduce((a: number, b: number) => a + b, 0);
   const successColor = succeeded ? "#4ade80" : "#f87171";
   const successIcon = succeeded ? <CheckCircleIcon /> : <CancelIcon />;
-  const attackModifier = roll.modifier - diceSum;
+
+  // roll.modifier já é o modificador puro (atributo + bônus), separado dos dados
+  const attackModifier: number = roll.modifier ?? 0;
+  const modifierText = attackModifier > 0 ? `+${attackModifier}` : `${attackModifier}`;
+
+  // Dano: usa a prop quando fornecida, senão os impactRolls salvos na rolagem
+  const dmgRolls: number[] | undefined =
+    damageRolls ?? (roll.impactRolls?.length ? roll.impactRolls : undefined);
+  const dmgDiceSum = dmgRolls?.reduce((a: number, b: number) => a + b, 0) ?? 0;
+  // Diferença entre o dano final e os dados = atributo/bônus (e crítico, se houver)
+  const dmgBonus = damageModifier > 0
+    ? damageModifier
+    : dmgRolls && roll.damage
+      ? roll.damage - dmgDiceSum
+      : 0;
 
   return (
     <Stack spacing={2}>
@@ -50,12 +72,22 @@ export function RollBreakdown({
 
         <Box sx={{ fontFamily: "monospace", fontSize: 12, backgroundColor: "#1a1a2e", p: 1.5, borderRadius: 1 }}>
           <Stack spacing={0.8}>
+            {/* Equação completa: 1d20 (19) + 15 = 34 */}
             <Typography sx={{ fontFamily: "monospace" }}>
-              <span style={{ color: "#fbbf24" }}>
-                {roll.diceRolled} ({roll.rolls.join(", ")})
-              </span>
+              <span style={{ color: "#fbbf24" }}>{roll.diceRolled}</span>
+              {" ("}
+              {roll.rolls.map((v: number, i: number) => (
+                <span key={i}>
+                  {i > 0 && ", "}
+                  <span style={{ color: dieColor(v, roll.diceRolled), fontWeight: 700 }}>{v}</span>
+                </span>
+              ))}
+              {")"}
+              {attackModifier !== 0 && (
+                <span style={{ color: "#a78bfa" }}> {modifierText}</span>
+              )}
               {" = "}
-              <span style={{ color: "#60a5fa" }}>{diceSum}</span>
+              <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: 14 }}>{roll.total}</span>
             </Typography>
 
             <Stack spacing={0.4} sx={{ pl: 1.5, borderLeft: "2px solid #374151" }}>
@@ -64,10 +96,10 @@ export function RollBreakdown({
                 <span style={{ color: "#4ade80" }}>{diceSum}</span>
               </Typography>
 
-              {attackModifier > 0 && (
+              {attackModifier !== 0 && (
                 <Typography sx={{ fontFamily: "monospace", fontSize: 11 }}>
                   ├─ Modificador:{" "}
-                  <span style={{ color: "#a78bfa" }}>+{attackModifier}</span>
+                  <span style={{ color: "#a78bfa" }}>{modifierText}</span>
                 </Typography>
               )}
 
@@ -79,20 +111,19 @@ export function RollBreakdown({
                     <span style={{ color: "#f97316", marginLeft: 4 }}>⚡ CRÍTICO</span>
                   )}
                 </span>
+                {targetDefense !== undefined && (
+                  <span style={{ color: "#777", fontWeight: 400 }}>
+                    {" "}vs DEF <span style={{ color: "#60a5fa" }}>{targetDefense}</span>
+                  </span>
+                )}
               </Typography>
             </Stack>
           </Stack>
         </Box>
-
-        {targetDefense !== undefined && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }} display="block">
-            vs Defesa: <span style={{ color: "#60a5fa" }}>{targetDefense}</span>
-          </Typography>
-        )}
       </Box>
 
       {/* Dano (se houver e > 0) */}
-      {showDamage && roll.damage && roll.damage > 0 && roll.preset?.impactFormula && (
+      {showDamage && roll.damage > 0 && (
         <>
           <Divider />
           <Box>
@@ -102,32 +133,34 @@ export function RollBreakdown({
 
             <Box sx={{ fontFamily: "monospace", fontSize: 12, backgroundColor: "#1a1a2e", p: 1.5, borderRadius: 1 }}>
               <Stack spacing={0.8}>
-                <Typography sx={{ fontFamily: "monospace" }}>
-                  <span style={{ color: "#fbbf24" }}>
-                    {roll.preset.impactFormula}
-                  </span>
-                  {damageRolls && (
-                    <>
-                      {" ("}<span style={{ color: "#60a5fa" }}>{damageRolls.join(", ")}</span>{")"} ={" "}
-                      <span style={{ color: "#60a5fa" }}>{damageRolls.reduce((a: number, b: number) => a + b, 0)}</span>
-                    </>
-                  )}
-                </Typography>
+                {(roll.preset?.impactFormula || dmgRolls) && (
+                  <Typography sx={{ fontFamily: "monospace" }}>
+                    {roll.preset?.impactFormula && (
+                      <span style={{ color: "#fbbf24" }}>{roll.preset.impactFormula}</span>
+                    )}
+                    {dmgRolls && (
+                      <>
+                        {" ("}<span style={{ color: "#60a5fa" }}>{dmgRolls.join(", ")}</span>{")"}
+                        {dmgBonus > 0 && <span style={{ color: "#a78bfa" }}> +{dmgBonus}</span>}
+                        {" = "}
+                        <span style={{ color: "#f87171", fontWeight: 700 }}>{roll.damage}</span>
+                      </>
+                    )}
+                  </Typography>
+                )}
 
                 <Stack spacing={0.4} sx={{ pl: 1.5, borderLeft: "2px solid #374151" }}>
-                  {damageRolls && (
+                  {dmgRolls && (
                     <Typography sx={{ fontFamily: "monospace", fontSize: 11 }}>
                       ├─ Dado:{" "}
-                      <span style={{ color: "#4ade80" }}>
-                        {damageRolls.reduce((a: number, b: number) => a + b, 0)}
-                      </span>
+                      <span style={{ color: "#4ade80" }}>{dmgDiceSum}</span>
                     </Typography>
                   )}
 
-                  {damageModifier > 0 && (
+                  {dmgBonus > 0 && (
                     <Typography sx={{ fontFamily: "monospace", fontSize: 11 }}>
-                      ├─ Modificador:{" "}
-                      <span style={{ color: "#a78bfa" }}>+{damageModifier}</span>
+                      ├─ Bônus{roll.critical ? "/crítico" : ""}:{" "}
+                      <span style={{ color: "#a78bfa" }}>+{dmgBonus}</span>
                     </Typography>
                   )}
 

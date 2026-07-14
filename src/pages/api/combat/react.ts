@@ -132,6 +132,26 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
     }
 
+    /* =========================
+       LIMITE DE REAÇÕES POR RODADA
+       SKIP não consome reação. Limite efetivo: override do
+       personagem > config da mesa (null = ilimitado).
+    ========================= */
+    if (reactionType !== "SKIP" && targetParticipant) {
+        const campaign = await prisma.campaign.findUnique({
+            where: { id: target.campaignId },
+            select: { reactionsPerRound: true },
+        });
+        const reactionLimit = target.maxReactionsPerRound ?? campaign?.reactionsPerRound ?? null;
+
+        if (reactionLimit !== null && targetParticipant.reactionsUsed >= reactionLimit) {
+            return res.status(400).json({
+                message: `${target.name} já usou ${reactionLimit} reação(ões) nesta rodada`,
+                code: "REACTION_LIMIT_REACHED",
+            });
+        }
+    }
+
     let reactionPresetId: string;
 
     /* =========================
@@ -268,6 +288,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             critical: false,
         },
     });
+
+    // Consome a reação da rodada (tentativa conta mesmo se falhou)
+    if (targetParticipant) {
+        await prisma.combatParticipant.update({
+            where: { id: targetParticipant.id },
+            data: { reactionsUsed: { increment: 1 } },
+        });
+    }
 
     /* =========================
        ATUALIZA STATUS DO ALVO E VERIFICA FIM DA FILA
