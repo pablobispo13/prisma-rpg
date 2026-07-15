@@ -145,6 +145,17 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         },
       });
     }
+
+    // Fora de combate também fica registrado no histórico do personagem
+    if (activeParticipants.length === 0) {
+      await tx.actionLog.create({
+        data: {
+          type: LogType.MANUAL_OVERRIDE,
+          message: `${currentActive.name} se transformou em ${newActive.name}`,
+          characterId: newActiveId,
+        },
+      });
+    }
   });
 
   for (const participant of activeParticipants) {

@@ -43,7 +43,13 @@ export function RollInfoCard({
   compact = false,
 }: RollInfoCardProps) {
   const diceSum = diceRolls.reduce((a, b) => a + b, 0);
-  const modifierValue = modifier - diceSum;
+  // `modifier` já é o modificador puro (atributo + bônus), salvo separado dos dados
+  const modifierValue = modifier;
+  const modifierText = modifierValue > 0 ? `+${modifierValue}` : `${modifierValue}`;
+  const isD20 = /d20/i.test(diceFormula);
+  const dieColor = (v: number) =>
+    isD20 && v === 20 ? "#4ade80" : isD20 && v === 1 ? "#f87171" : "#60a5fa";
+  const impactSum = impactRolls?.reduce((a, b) => a + b, 0) ?? 0;
 
   let successColor = "#888";
   let successIcon = null;
@@ -133,13 +139,22 @@ export function RollInfoCard({
             }}
           >
             <Stack spacing={compact ? 0.3 : 0.5}>
-              {/* Dice roll line */}
+              {/* Equação completa: 1d20 (19) +15 = 34 */}
               <Typography sx={{ fontFamily: "monospace" }}>
-                <span style={{ color: "#fbbf24" }}>
-                  {diceFormula} ({diceRolls.join(", ")})
-                </span>
+                <span style={{ color: "#fbbf24" }}>{diceFormula}</span>
+                {" ("}
+                {diceRolls.map((v, i) => (
+                  <span key={i}>
+                    {i > 0 && ", "}
+                    <span style={{ color: dieColor(v), fontWeight: 700 }}>{v}</span>
+                  </span>
+                ))}
+                {")"}
+                {modifierValue !== 0 && (
+                  <span style={{ color: "#a78bfa" }}> {modifierText}</span>
+                )}
                 {" = "}
-                <span style={{ color: "#60a5fa" }}>{diceSum}</span>
+                <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: compact ? 12 : 14 }}>{total}</span>
               </Typography>
 
               {/* Breakdown */}
@@ -148,9 +163,9 @@ export function RollInfoCard({
                   ├─ Dado: <span style={{ color: "#4ade80" }}>{diceSum}</span>
                 </Typography>
 
-                {modifierValue > 0 && (
+                {modifierValue !== 0 && (
                   <Typography sx={{ fontFamily: "monospace", fontSize: compact ? 10 : 11 }}>
-                    ├─ Modificador: <span style={{ color: "#a78bfa" }}>+{modifierValue}</span>
+                    ├─ Modificador: <span style={{ color: "#a78bfa" }}>{modifierText}</span>
                   </Typography>
                 )}
 
@@ -174,10 +189,12 @@ export function RollInfoCard({
                 <Typography variant="caption" sx={{ color: "#f87171", fontWeight: 700, fontFamily: "monospace" }}>
                   🗡️ Dano: {damage}
                 </Typography>
-                {impactFormula && impactRolls && impactRolls.length > 0 && (
+                {impactRolls && impactRolls.length > 0 && (
                   <Typography sx={{ fontFamily: "monospace", fontSize: compact ? 10 : 11, color: "#fca5a5", pl: 1.5, borderLeft: "2px solid #f87171" }}>
-                    {impactFormula} ({impactRolls.join(", ")}) = {impactRolls.reduce((a, b) => a + b, 0)}
-                    {critical && " × crítico"}
+                    {impactFormula ?? "dados"} ({impactRolls.join(", ")})
+                    {damage! - impactSum > 0 && ` +${damage! - impactSum}`}
+                    {" = "}{damage}
+                    {critical && " (com crítico)"}
                   </Typography>
                 )}
               </Stack>
@@ -191,9 +208,11 @@ export function RollInfoCard({
                 <Typography variant="caption" sx={{ color: "#4ade80", fontWeight: 700, fontFamily: "monospace" }}>
                   💚 Cura: {healing}
                 </Typography>
-                {impactFormula && impactRolls && impactRolls.length > 0 && (
+                {impactRolls && impactRolls.length > 0 && (
                   <Typography sx={{ fontFamily: "monospace", fontSize: compact ? 10 : 11, color: "#86efac", pl: 1.5, borderLeft: "2px solid #4ade80" }}>
-                    {impactFormula} ({impactRolls.join(", ")}) = {impactRolls.reduce((a, b) => a + b, 0)}
+                    {impactFormula ?? "dados"} ({impactRolls.join(", ")})
+                    {healing! - impactSum > 0 && ` +${healing! - impactSum}`}
+                    {" = "}{healing}
                   </Typography>
                 )}
               </Stack>

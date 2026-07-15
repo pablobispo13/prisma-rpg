@@ -461,6 +461,15 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
 
   // Personagem que este usuário pode transformar (mestre: o da vez; jogador: o seu)
   const transformChar = isMaster ? activeCharacter : myParticipant?.character;
+  const myReactParticipant = isMaster ? activeParticipant : myParticipant;
+
+  // Reações restantes na rodada (override do personagem > mesa; null = ilimitado)
+  const reactionLimitBar: number | null =
+    myReactParticipant?.character?.maxReactionsPerRound ?? activeCampaign?.reactionsPerRound ?? null;
+  const reactionsLeftBar =
+    reactionLimitBar == null
+      ? null
+      : Math.max(0, reactionLimitBar - (myReactParticipant?.reactionsUsed ?? 0));
   const transformHasForms =
     !!transformChar && ((transformChar.forms?.length ?? 0) > 0 || !!transformChar.primaryFormId);
 
@@ -652,6 +661,9 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                           <Typography fontSize={13} fontWeight={600} flex={1} noWrap>{p.character.name}</Typography>
 
                           <Stack direction="row" alignItems="center" spacing={0.25}>
+                            {p.character.primaryFormId && (
+                              <Chip label="🜂" size="small" title="Forma alternativa (transformado)" sx={{ fontSize: 10, height: 16, bgcolor: "rgba(124,58,237,0.25)", color: "#a78bfa" }} />
+                            )}
                             {isNpc && <Chip label="NPC" size="small" sx={{ fontSize: 9, height: 16, bgcolor: "#374151", color: "#9ca3af" }} />}
                             {isMaster && (
                               <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => { e.stopPropagation(); setHpEditParticipant(p); setHpEditValue(p.currentLife); setHpEditOpen(true); }}>
@@ -744,6 +756,11 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
             {actionUsed && <Typography fontSize={12} color="#ffa726" mt={0.5}>⚡ Ação principal já utilizada neste turno</Typography>}
             {isMyTurn && !actionUsed && attackLimit > 1 && (
               <Typography fontSize={12} color="#4fc3f7" mt={0.5}>⚔️ Ataques restantes nesta rodada: {attacksLeft}/{attackLimit}</Typography>
+            )}
+            {reactionsLeftBar !== null && myReactParticipant && (
+              <Typography fontSize={12} color={reactionsLeftBar > 0 ? "#ffb74d" : "#f87171"} mt={0.5}>
+                🛡️ Reações restantes nesta rodada: {reactionsLeftBar}/{reactionLimitBar}
+              </Typography>
             )}
             {!isMyTurn && !isMaster && myParticipant && <Typography fontSize={11} color="#6b7280" mt={0.5}>Suas habilidades — disponíveis no seu turno</Typography>}
           </Box>
@@ -1117,6 +1134,9 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                             <Typography fontWeight={700} noWrap>{p.character.name}</Typography>
                             <Stack direction="row" spacing={0.5} mt={0.25}>
                               {isActive && <Chip label="Turno ativo" size="small" sx={{ fontSize: 10, height: 18, bgcolor: "#4fc3f7", color: "#000" }} />}
+                              {p.character.primaryFormId && (
+                                <Chip label="🜂 Transformado" size="small" title="Forma alternativa" sx={{ fontSize: 10, height: 18, bgcolor: "rgba(124,58,237,0.25)", color: "#a78bfa" }} />
+                              )}
                               {isNpc && <Chip label="NPC" size="small" sx={{ fontSize: 10, height: 18, bgcolor: "#374151", color: "#9ca3af" }} />}
                               {p.currentLife <= 0 && <Chip label="Morto" size="small" sx={{ fontSize: 10, height: 18, bgcolor: "#333", color: "#666" }} />}
                             </Stack>

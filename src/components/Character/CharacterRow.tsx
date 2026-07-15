@@ -20,6 +20,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+import { FormCreateDialog } from "./FormCreateDialog";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useState } from "react";
@@ -116,6 +117,7 @@ export function CharacterRow({
   isDragOver,
 }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -145,21 +147,6 @@ export function CharacterRow({
     }
   }
 
-  async function handleCreateForm() {
-    const name = window.prompt("Nome da nova forma (ex: Zumbi Transformado):");
-    if (!name?.trim()) return;
-    setCloning(true);
-    try {
-      const primaryId = character.formGroup?.primaryId ?? character.id;
-      await api.post(`/characters/${primaryId}/forms`, { name: name.trim() });
-      toast.success(`Forma "${name.trim()}" criada — edite a ficha dela trocando de forma`);
-      onFormCreated?.();
-    } catch {
-      toast.error("Erro ao criar forma");
-    } finally {
-      setCloning(false);
-    }
-  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -259,9 +246,19 @@ export function CharacterRow({
 
         {/* Name + HP */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography fontSize={13} fontWeight={600} noWrap lineHeight={1.2}>
-            {character.name}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Typography fontSize={13} fontWeight={600} noWrap lineHeight={1.2}>
+              {character.name}
+            </Typography>
+            {character.formGroup && character.formGroup.activeId !== character.formGroup.primaryId && (
+              <Chip
+                label="🜂 Transformado"
+                size="small"
+                title="Este personagem está em uma forma alternativa"
+                sx={{ height: 16, fontSize: 9, bgcolor: "rgba(124,58,237,0.18)", color: "#a78bfa", flexShrink: 0 }}
+              />
+            )}
+          </Stack>
           <Stack direction="row" alignItems="center" spacing={1} mt={0.35}>
             <LinearProgress
               value={hpPct}
@@ -371,7 +368,7 @@ export function CharacterRow({
               <span>
                 <IconButton
                   size="small"
-                  onClick={handleCreateForm}
+                  onClick={() => setFormDialogOpen(true)}
                   disabled={cloning}
                   sx={{ color: "#7c3aed", "&:hover": { color: "#a78bfa" } }}
                 >
@@ -427,6 +424,15 @@ export function CharacterRow({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Nova forma */}
+      <FormCreateDialog
+        open={formDialogOpen}
+        onClose={() => setFormDialogOpen(false)}
+        primaryId={character.formGroup?.primaryId ?? character.id}
+        characterName={character.name}
+        onCreated={onFormCreated}
+      />
     </>
   );
 }
