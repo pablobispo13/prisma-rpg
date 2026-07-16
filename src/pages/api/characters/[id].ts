@@ -89,6 +89,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       counterAttackPresetId,
       maxReactionsPerRound,
       maxAttacksPerRound,
+      maxTransformationsPerRound,
     } = req.body;
 
     // image só pode ser alterada por admin (curadoria centralizada)
@@ -128,6 +129,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           ? {
               maxReactionsPerRound: normalizeLimit(maxReactionsPerRound),
               maxAttacksPerRound: normalizeLimit(maxAttacksPerRound),
+              maxTransformationsPerRound: normalizeLimit(maxTransformationsPerRound),
             }
           : {}),
         dodgePresetId,
@@ -183,6 +185,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           baseDefense: source.baseDefense,
           maxReactionsPerRound: source.maxReactionsPerRound,
           maxAttacksPerRound: source.maxAttacksPerRound,
+          maxTransformationsPerRound: source.maxTransformationsPerRound,
           history: source.history,
           notes: source.notes,
           image: source.image,

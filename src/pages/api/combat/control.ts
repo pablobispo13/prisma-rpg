@@ -217,7 +217,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 if (nextRound > combat.round) {
                     await prisma.combatParticipant.updateMany({
                         where: { combatId },
-                        data: { attacksUsed: 0, reactionsUsed: 0 },
+                        data: { attacksUsed: 0, reactionsUsed: 0, transformationsUsed: 0 },
                     });
                 }
 
@@ -298,7 +298,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (nextRound > combat.round) {
                 await prisma.combatParticipant.updateMany({
                     where: { combatId },
-                    data: { attacksUsed: 0, reactionsUsed: 0 },
+                    data: { attacksUsed: 0, reactionsUsed: 0, transformationsUsed: 0 },
                 });
             }
 
@@ -388,16 +388,6 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
             notifyCombatUpdate(combatId);
             return res.status(200).json({ message: "Ordem atualizada" });
-        }
-
-        case "updateNotes": {
-            if (!isMaster) {
-                return res.status(403).json({ message: "Apenas o mestre pode editar notas" });
-            }
-            const { notes } = req.body;
-            if (!combatId) return res.status(400).json({ message: "combatId obrigatório" });
-            await prisma.combat.update({ where: { id: combatId }, data: { notes: notes ?? "" } });
-            return res.status(200).json({ message: "Notas atualizadas" });
         }
 
         case "setStreamUrl": {

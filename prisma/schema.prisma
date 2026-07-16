@@ -119,6 +119,10 @@ model Campaign {
   // por personagem via Character.maxAttacksPerRound (base: 1 por rodada).
   reactionsPerRound Int?
 
+  // Cor de destaque da imagem do personagem na ficha (hex, ex: #FF3D00).
+  // null = cor padrão do sistema (laranja)
+  characterImageColor String?
+
   masterId String @db.ObjectId
   master   User   @relation("CampaignMaster", fields: [masterId], references: [id])
 
@@ -179,6 +183,11 @@ model Character {
   // Permite habilidades tipo "reage 2x por rodada" ou "ataque extra".
   maxReactionsPerRound Int?
   maxAttacksPerRound   Int?
+
+  // Limite de transformações por rodada em combate (configurado na ficha
+  // principal). Conta apenas assumir uma forma; voltar à base é livre.
+  // null = ilimitado
+  maxTransformationsPerRound Int?
 
   // Formas alternativas (ex: transformação em zumbi): cada forma é um
   // Character "irmão" completo apontando para o principal. Formas não
@@ -245,6 +254,9 @@ model ActionPreset {
   allowOutOfCombat Boolean @default(false)
   appliesEffect    Boolean @default(true)
   isAreaEffect     Boolean @default(false)
+  // Habilidade que pertence à forma transformada: em combate, a ficha
+  // transformada mostra apenas as marcadas e a ficha base as esconde
+  transformedOnly  Boolean @default(false)
 
   attribute AttributeType
 
@@ -393,7 +405,6 @@ model Combat {
 
   currentTurnIndex Int @default(0)
 
-  notes       String?
   streamUrl   String?
   hpSnapshots Json[]  @default([])
 
@@ -423,8 +434,9 @@ model CombatParticipant {
   turnOrder   Int?
 
   // Contadores da rodada atual — zerados quando a rodada avança (control.ts)
-  attacksUsed   Int @default(0)
-  reactionsUsed Int @default(0)
+  attacksUsed         Int @default(0)
+  reactionsUsed       Int @default(0)
+  transformationsUsed Int @default(0)
 }
 
 ///////////////////////

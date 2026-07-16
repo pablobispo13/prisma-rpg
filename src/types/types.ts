@@ -26,6 +26,7 @@ export type Character = {
     // Overrides dos limites da mesa (null = usa o da campanha)
     maxReactionsPerRound?: number | null;
     maxAttacksPerRound?: number | null;
+    maxTransformationsPerRound?: number | null;
 
     // Formas alternativas (transformações)
     primaryFormId?: string | null;
@@ -82,6 +83,7 @@ export type ActionPresetType = {
     allowOutOfCombat?: boolean;
     appliesEffect?: boolean;
     isAreaEffect?: boolean;
+    transformedOnly?: boolean;
     durationTurns?: number | null;
     statAffected?: string | null;
     effectAmount?: number | null;

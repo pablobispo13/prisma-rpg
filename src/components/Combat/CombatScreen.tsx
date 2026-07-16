@@ -31,7 +31,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
-import { useAuth } from "../../context/AuthContext";
 import { useCombat, CombatProvider } from "../../context/CombatContext";
 import api from "../../lib/api";
 import { useRouter } from "next/router";
@@ -43,6 +42,7 @@ import Head from "next/head";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { useActiveStream } from "../../lib/useActiveStream";
+import { characterImageSrc } from "../../lib/characterImage";
 import { useCampaign } from "../../context/CampaignContext";
 import { isNpc as checkIsNpc } from "../../lib/isNpc";
 import { Reorder, motion, AnimatePresence } from "framer-motion";
@@ -232,10 +232,9 @@ function Row({ label, value, highlight, danger }: { label: string; value: string
 type CombatScreenProps = { combatId: string };
 
 export default function CombatScreen({ combatId }: CombatScreenProps) {
-  const { user } = useAuth();
   return (
     <CombatProvider combatId={combatId}>
-      <CombatScreenContent isMaster={user?.role === "MESTRE"} />
+      <CombatScreenContent />
     </CombatProvider>
   );
 }
@@ -244,9 +243,9 @@ export default function CombatScreen({ combatId }: CombatScreenProps) {
    CONTENT
 ========================= */
 
-function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
+function CombatScreenContent() {
   const {
-    combat, isMyTurn, actionUsed, attackLimit, attacksLeft, myCharacterIds, selectedTargets,
+    combat, isMaster, isMyTurn, actionUsed, attackLimit, attacksLeft, myCharacterIds, selectedTargets,
     selectTarget, clearTargets, useMainAction, endTurn, endCombat, pendingReactionRoll,
     resolveReaction, refreshCombat,
     isLoading, combatStats, clearStats,
@@ -304,15 +303,6 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
 
   const streamUrl = useActiveStream();
 
-  // Combat notes (master only)
-  const [notesValue, setNotesValue] = useState("");
-  const [notesSaving, setNotesSaving] = useState(false);
-
-  useEffect(() => {
-    if (combat?.notes !== undefined) setNotesValue(combat.notes ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [combat?.id]);
-
   // Redireciona jogadores automaticamente quando o combate é encerrado
   useEffect(() => {
     if (combat?.active === false && !isMaster) {
@@ -320,16 +310,6 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
       router.push("/protected/");
     }
   }, [combat?.active]);
-
-  async function saveNotes() {
-    setNotesSaving(true);
-    try {
-      await api.post("/combat/control", { action: "updateNotes", combatId: combat.id, notes: notesValue });
-    } finally {
-      setNotesSaving(false);
-    }
-  }
-
 
   /* ---- sync ordered list (skip during active drag to avoid ghost animation) ---- */
   useEffect(() => {
@@ -473,6 +453,17 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
   const transformHasForms =
     !!transformChar && ((transformChar.forms?.length ?? 0) > 0 || !!transformChar.primaryFormId);
 
+  // Limite de transformações por rodada (config da ficha principal; null =
+  // ilimitado). Assumir uma forma consome 1; voltar à base é livre
+  const transformLimit: number | null =
+    transformChar?.primaryForm?.maxTransformationsPerRound ??
+    transformChar?.maxTransformationsPerRound ??
+    null;
+  const transformsLeft =
+    transformLimit == null
+      ? null
+      : Math.max(0, transformLimit - (myReactParticipant?.transformationsUsed ?? 0));
+
   async function openFormMenu(e: React.MouseEvent<HTMLElement>) {
     if (!transformChar || formLoading) return;
     const anchor = e.currentTarget;
@@ -513,10 +504,18 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
   const canAct = isMyTurn && !pendingReactionRoll && !actionUsed;
   const canEndTurn = isMyTurn && !pendingReactionRoll;
 
+  // Habilidades exibidas em combate: a ficha transformada mostra apenas as
+  // marcadas como "da forma" (se nenhuma foi marcada, mostra todas —
+  // compatibilidade com formas antigas); a ficha base esconde as marcadas
+  const isTransformedForm = !!presetsSource?.primaryFormId;
+  const hasFormPresets = (presetsSource?.presets ?? []).some((p: ActionPresetType) => p.transformedOnly);
+  const combatPresets: (ActionPresetType & { isAreaEffect?: boolean })[] =
+    (presetsSource?.presets ?? []).filter((p: ActionPresetType) =>
+      isTransformedForm ? (!hasFormPresets || p.transformedOnly) : !p.transformedOnly
+    );
+
   // Derived from the currently armed preset
-  const selectedPreset = presetsSource.presets?.find(
-    (p: ActionPresetType & { isAreaEffect?: boolean }) => p.id === selectedPresetId
-  ) as (ActionPresetType & { isAreaEffect?: boolean }) | undefined;
+  const selectedPreset = combatPresets.find((p) => p.id === selectedPresetId);
   const isAoe = !!(selectedPreset?.isAreaEffect) || selectedPreset?.targetType === "MULTIPLE";
   const isHealPreset = selectedPreset?.type === "HEAL" || selectedPreset?.type === "SUPPORT";
 
@@ -651,7 +650,7 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                           <Typography fontSize={10} color="#555" fontWeight={700} sx={{ minWidth: 14 }}>#{index + 1}</Typography>
 
                           <Avatar
-                            src={p.character.image ?? undefined}
+                            src={characterImageSrc(p.character.image)}
                             alt={p.character.name}
                             sx={{ width: 28, height: 28, fontSize: 11, bgcolor: isActive ? "#4fc3f7" : "#374151", border: isActive ? "2px solid #4fc3f7" : "1px solid #555" }}
                           >
@@ -762,11 +761,16 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                 🛡️ Reações restantes nesta rodada: {reactionsLeftBar}/{reactionLimitBar}
               </Typography>
             )}
+            {transformsLeft !== null && transformHasForms && (
+              <Typography fontSize={12} color={transformsLeft > 0 ? "#a78bfa" : "#f87171"} mt={0.5}>
+                🜂 Transformações restantes nesta rodada: {transformsLeft}/{transformLimit} (voltar à base é livre)
+              </Typography>
+            )}
             {!isMyTurn && !isMaster && myParticipant && <Typography fontSize={11} color="#6b7280" mt={0.5}>Suas habilidades — disponíveis no seu turno</Typography>}
           </Box>
 
           <Stack direction="row" spacing={1.5} flexWrap="wrap">
-            {presetsSource.presets?.map((preset: ActionPresetType & { isAreaEffect?: boolean }) => {
+            {combatPresets.map((preset) => {
               const needsTarget = preset.targetType !== "SELF";
               const presetIsAoe = !!(preset.isAreaEffect) || preset.targetType === "MULTIPLE";
               const isArmed = selectedPresetId === preset.id;
@@ -849,15 +853,17 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
           >
             {formGroupData?.options.map((opt) => {
               const isActive = opt.id === formGroupData.activeId;
+              // Sem transformações restantes, só a volta pra forma base fica disponível
+              const blockedByLimit = transformsLeft === 0 && opt.id !== formGroupData.primaryId;
               return (
                 <MenuItem
                   key={opt.id}
-                  disabled={isActive}
+                  disabled={isActive || blockedByLimit}
                   onClick={() => switchFormInCombat(opt.id)}
                   sx={{ fontSize: 13, color: isActive ? "#a78bfa" : "#cdd1e0", gap: 1 }}
                 >
                   <Avatar
-                    src={opt.image ? `/characters/${opt.image}` : undefined}
+                    src={characterImageSrc(opt.image)}
                     sx={{ width: 24, height: 24, fontSize: 11 }}
                   >
                     {opt.name[0]}
@@ -981,7 +987,7 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
               {availableChars.map((char: any) => (
                 <ListItem key={char.id} disablePadding>
                   <ListItemButton onClick={() => addParticipant(char.id)}>
-                    <Avatar src={char.image ?? undefined} sx={{ width: 28, height: 28, mr: 1.5, fontSize: 12 }}>{char.name[0]}</Avatar>
+                    <Avatar src={characterImageSrc(char.image)} sx={{ width: 28, height: 28, mr: 1.5, fontSize: 12 }}>{char.name[0]}</Avatar>
                     <ListItemText primary={char.name} secondary={`HP: ${char.life}/${char.maxLife} • ${char.owner?.username ?? ""}`} />
                   </ListItemButton>
                 </ListItem>
@@ -993,27 +999,6 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
           <Button onClick={() => setAddParticipantOpen(false)} color="inherit">Cancelar</Button>
         </DialogActions>
       </Dialog>
-
-      {/* ===== NOTAS DO COMBATE (Mestre) ===== */}
-      {isMaster && (
-        <Box sx={{ px: 2, py: 1, borderTop: "1px solid rgba(107,122,219,0.2)", background: "rgba(14,14,26,0.7)" }}>
-          <Stack direction="row" spacing={1} alignItems="flex-end">
-            <TextField
-              label="Notas do combate"
-              multiline
-              maxRows={3}
-              size="small"
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              sx={{ flex: 1, "& .MuiInputBase-root": { fontSize: 12 } }}
-              placeholder="Anotações visíveis apenas para o mestre..."
-            />
-            <Button size="small" variant="outlined" disabled={notesSaving} onClick={saveNotes} sx={{ height: 40, minWidth: 60 }}>
-              {notesSaving ? <CircularProgress size={14} /> : "Salvar"}
-            </Button>
-          </Stack>
-        </Box>
-      )}
 
       {/* ===== MODAL AJUSTE HP ===== */}
       <Dialog open={hpEditOpen} onClose={() => setHpEditOpen(false)} maxWidth="xs" fullWidth>
@@ -1124,7 +1109,7 @@ function CombatScreenContent({ isMaster }: { isMaster: boolean }) {
                       <CardContent>
                         <Stack direction="row" alignItems="center" spacing={2} mb={1.5}>
                           <Avatar
-                            src={p.character.image ?? undefined}
+                            src={characterImageSrc(p.character.image)}
                             alt={p.character.name}
                             sx={{ width: 48, height: 48, fontSize: 18, bgcolor: isActive ? "#4fc3f7" : "#374151", border: isActive ? "2px solid #4fc3f7" : "1px solid #555" }}
                           >

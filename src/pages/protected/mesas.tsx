@@ -51,6 +51,9 @@ export default function MesasPage() {
   // Limite de reações por rodada (edição da mesa)
   const [editReactionsPerRound, setEditReactionsPerRound] = useState<string>("");
 
+  // Cor de destaque da imagem do personagem ("" = padrão do sistema)
+  const [editImageColor, setEditImageColor] = useState<string>("");
+
   // Admin: atribuir mesa a um mestre ao criar
   type AdminUserOption = {
     id: string;
@@ -207,6 +210,7 @@ export default function MesasPage() {
       maxLifeFormula: c.maxLifeFormula ?? "",
     });
     setEditReactionsPerRound(c.reactionsPerRound == null ? "" : String(c.reactionsPerRound));
+    setEditImageColor(c.characterImageColor ?? "");
   };
 
   const handleEditSave = editForm.handleSubmit(async (values) => {
@@ -217,6 +221,7 @@ export default function MesasPage() {
         defenseFormula: values.defenseFormula ?? null,
         maxLifeFormula: values.maxLifeFormula ?? null,
         reactionsPerRound: editReactionsPerRound === "" ? null : Number(editReactionsPerRound),
+        characterImageColor: editImageColor === "" ? null : editImageColor,
       });
       toast.success("Mesa atualizada");
       setEditTarget(null);
@@ -591,6 +596,24 @@ export default function MesasPage() {
               <Typography variant="caption" sx={{ color: "#7a7f95" }}>
                 Exceções individuais (ex: habilidade com reação extra ou segundo ataque) são configuradas na ficha de cada personagem.
               </Typography>
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Aparência
+              </Typography>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <TextField
+                  type="color"
+                  label="Cor de destaque da imagem do personagem"
+                  value={editImageColor || "#FF3D00"}
+                  onChange={(e) => setEditImageColor(e.target.value)}
+                  fullWidth
+                  helperText={editImageColor ? `Cor personalizada: ${editImageColor}` : "Usando a cor padrão do sistema (laranja)"}
+                />
+                <Button size="small" disabled={!editImageColor} onClick={() => setEditImageColor("")}>
+                  Padrão
+                </Button>
+              </Stack>
             </Stack>
           </DialogContent>
           <DialogActions>

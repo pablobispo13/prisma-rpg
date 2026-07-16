@@ -98,6 +98,19 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
   }
 
+  // Limite de transformações por rodada (config da ficha principal, null = ilimitado):
+  // assumir uma forma consome 1; voltar à base é livre
+  if (!isRevertToBase && primary.maxTransformationsPerRound != null && activeParticipants.length > 0) {
+    const limit = primary.maxTransformationsPerRound;
+    const exhausted = activeParticipants.some((p) => (p.transformationsUsed ?? 0) >= limit);
+    if (exhausted) {
+      res.status(400).json({
+        message: `Limite de ${limit} transformação(ões) por rodada atingido — aguarde a próxima rodada`,
+      });
+      return;
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.character.update({
       where: { id: primary.id },
@@ -122,6 +135,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         data: {
           characterId: newActiveId,
           currentLife: Math.min(newActive.life, newActive.maxLife),
+          // Voltar à base não consome o limite da rodada
+          ...(isRevertToBase ? {} : { transformationsUsed: { increment: 1 } }),
         },
       });
 

@@ -17,9 +17,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import ShieldIcon from "@mui/icons-material/Shield";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import { deepOrange } from "@mui/material/colors";
+import { darken } from "@mui/material/styles";
 import { useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../lib/api";
+import { characterImageSrc } from "../../lib/characterImage";
+import { useCampaign } from "../../context/CampaignContext";
 
 type Props = {
   character: Character;
@@ -38,6 +41,9 @@ export function CharacterHeaderCard({
 }: Props) {
   const [switchingForm, setSwitchingForm] = useState(false);
   const formGroup = character.formGroup;
+  const { activeCampaign } = useCampaign();
+  // Cor de destaque da imagem: configurável por mesa; padrão laranja do sistema
+  const accentColor = activeCampaign?.characterImageColor || deepOrange["A400"];
 
   const handleSwitchForm = async (formId: string) => {
     if (!formGroup || switchingForm || formId === formGroup.activeId) return;
@@ -92,20 +98,20 @@ export function CharacterHeaderCard({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: deepOrange["A400"],
+                  backgroundColor: accentColor,
                   borderRadius: 1,
-                  border: "1px solid "+ deepOrange["800"],
+                  border: "1px solid " + darken(accentColor, 0.3),
                   flexShrink: 0,
                 }}
               >
                 <Avatar
                   sx={{
-                    bgcolor: deepOrange["A400"],
+                    bgcolor: accentColor,
                     width: "96%",
                     height: "96%",
                   }}
                   variant="square"
-                  src={"/characters/" + character.image}
+                  src={characterImageSrc(character.image)}
                 />
               </Box>
 
@@ -173,7 +179,7 @@ export function CharacterHeaderCard({
                     size="small"
                     avatar={
                       opt.image ? (
-                        <Avatar src={`/characters/${opt.image}`} />
+                        <Avatar src={characterImageSrc(opt.image)} />
                       ) : undefined
                     }
                     onClick={

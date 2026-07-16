@@ -65,6 +65,10 @@ export function CharacterSheet({
   const masterId = activeCampaign?.masterId ?? null;
   // Edita se for visão do mestre, ou se o personagem não é um NPC (i.e., pertence a um jogador)
   const canEdit = isMasterView || !isNpc(characterLoaded, masterId);
+  // Habilidades marcadas como "da forma transformada" só são usáveis quando a
+  // ficha exibida é a de uma forma (destransformado, elas ficam só na listagem)
+  const isTransformedSheet = !!characterLoaded.primaryFormId;
+  const presetUsable = (p: ActionPresetType) => isTransformedSheet || !p.transformedOnly;
   const { combats } = useActiveCombats();
   const activeStreamUrl = useActiveStream();
   const [character, setCharacter] = useState<Character>(characterLoaded);
@@ -367,11 +371,11 @@ export function CharacterSheet({
             </Section>
 
             {/* Habilidades Fora de Combate */}
-            {!loading && actionPresets.some((p) => p.allowOutOfCombat) && (
+            {!loading && actionPresets.some((p) => p.allowOutOfCombat && presetUsable(p)) && (
               <Section title="Ações Fora de Combate">
                 <Stack direction="row" spacing={1.5} flexWrap="wrap">
                   {actionPresets
-                    .filter((p) => p.allowOutOfCombat)
+                    .filter((p) => p.allowOutOfCombat && presetUsable(p))
                     .map((preset) => (
                       <Roller
                         key={preset.id}
@@ -416,7 +420,7 @@ export function CharacterSheet({
                       const attributeValue =
                         (character[attributeKey] as number) || 0;
                       const roller =
-                        preset.type !== "REACT" && preset.type !== "SKILL" ? (
+                        preset.type !== "REACT" && preset.type !== "SKILL" && presetUsable(preset) ? (
                           <Roller
                             actionPresetId={preset.id}
                             characterId={character.id}

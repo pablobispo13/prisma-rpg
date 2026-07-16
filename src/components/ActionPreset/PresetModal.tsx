@@ -95,6 +95,7 @@ const BLANK = {
     allowOutOfCombat: false,
     appliesEffect: false,
     isAreaEffect: false,
+    transformedOnly: false,
     effectType: "",
     durationTurns: "",
     statAffected: "",
@@ -150,6 +151,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     allowOutOfCombat:preset.allowOutOfCombat ?? false,
                     appliesEffect:   preset.appliesEffect ?? false,
                     isAreaEffect:    preset.isAreaEffect ?? false,
+                    transformedOnly: preset.transformedOnly ?? false,
                     effectType:      (preset as any).effectType ?? "",
                     durationTurns:   preset.durationTurns?.toString() ?? "",
                     statAffected:    preset.statAffected ?? "",
@@ -193,6 +195,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
             requiresTurn:    form.requiresTurn,
             allowOutOfCombat:form.allowOutOfCombat,
             isAreaEffect:    showArea ? form.isAreaEffect : false,
+            transformedOnly: form.transformedOnly,
             appliesEffect:   form.appliesEffect,
             effectType:      form.appliesEffect && form.effectType ? form.effectType : null,
             durationTurns:   form.appliesEffect && effectNeeds?.duration && form.durationTurns
@@ -370,7 +373,17 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                     label={<Typography fontSize={13}>Área / múltiplos alvos</Typography>}
                                 />
                             )}
+                            <FormControlLabel
+                                control={<Switch size="small" checked={form.transformedOnly} onChange={e => update("transformedOnly", e.target.checked)} />}
+                                label={<Typography fontSize={13}>Habilidade da forma transformada</Typography>}
+                            />
                         </Stack>
+                        {form.transformedOnly && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                                Esta habilidade só aparece para uso enquanto o personagem estiver transformado —
+                                destransformado, ela some do combate e das ações da ficha.
+                            </Typography>
+                        )}
                     </Box>
 
                     <Divider sx={{ borderColor: "rgba(255,255,255,0.07)" }} />

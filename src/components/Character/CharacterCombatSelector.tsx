@@ -20,6 +20,7 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import { useEffect, useState } from "react";
 import { useCombat } from "../../context/CombatContext";
+import { characterImageSrc } from "../../lib/characterImage";
 
 type SelectableCharacter = {
   id: string;
@@ -121,7 +122,7 @@ export default function CharacterCombatSelector({
         }}
       >
         <Avatar
-          src={c.image ? `/characters/${c.image}` : undefined}
+          src={characterImageSrc(c.image)}
           sx={{ width: 30, height: 30, fontSize: 13 }}
         >
           {c.name[0]?.toUpperCase()}

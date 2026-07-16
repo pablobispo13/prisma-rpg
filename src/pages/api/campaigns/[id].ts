@@ -43,7 +43,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
-    const { name, description, image, archived, defenseFormula, maxLifeFormula, reactionsPerRound } = req.body ?? {};
+    const { name, description, image, archived, defenseFormula, maxLifeFormula, reactionsPerRound, characterImageColor } = req.body ?? {};
     const data: Record<string, unknown> = {};
     if (typeof name === "string" && name.trim()) data.name = name.trim();
     if (typeof description === "string") data.description = description;
@@ -84,6 +84,21 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           return;
         }
         data.reactionsPerRound = n;
+      }
+    }
+
+    // Cor de destaque da imagem do personagem (hex); vazio/null volta pro padrão
+    if (characterImageColor !== undefined) {
+      if (characterImageColor === null || characterImageColor === "") {
+        data.characterImageColor = null;
+      } else if (
+        typeof characterImageColor === "string" &&
+        /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(characterImageColor.trim())
+      ) {
+        data.characterImageColor = characterImageColor.trim();
+      } else {
+        res.status(400).json({ message: "characterImageColor deve ser uma cor hex (ex: #FF3D00)" });
+        return;
       }
     }
 

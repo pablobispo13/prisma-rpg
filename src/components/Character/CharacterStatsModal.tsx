@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
+import { characterImageSrc } from "../../lib/characterImage";
 import { Character } from "../../types/types";
 import {
   calculateMaxLife,
@@ -49,6 +50,7 @@ const BLANK = {
   presence: 0,
   maxReactionsPerRound: "" as string | number,
   maxAttacksPerRound: "" as string | number,
+  maxTransformationsPerRound: "" as string | number,
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -88,6 +90,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         presence: character.presence,
         maxReactionsPerRound: character.maxReactionsPerRound ?? "",
         maxAttacksPerRound: character.maxAttacksPerRound ?? "",
+        maxTransformationsPerRound: character.maxTransformationsPerRound ?? "",
       });
     }
   }, [character, open]);
@@ -143,6 +146,8 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 form.maxReactionsPerRound === "" ? null : Number(form.maxReactionsPerRound),
               maxAttacksPerRound:
                 form.maxAttacksPerRound === "" ? null : Number(form.maxAttacksPerRound),
+              maxTransformationsPerRound:
+                form.maxTransformationsPerRound === "" ? null : Number(form.maxTransformationsPerRound),
             }
           : {}),
       });
@@ -169,7 +174,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
           <SectionLabel>Identificação</SectionLabel>
           <Stack direction="row" spacing={2} alignItems="flex-start">
             <Avatar
-              src={form.image ? `/characters/${form.image}` : undefined}
+              src={characterImageSrc(form.image)}
               sx={{ width: 64, height: 64, mt: 1, flexShrink: 0 }}
             >
               {form.name?.[0]?.toUpperCase()}
@@ -324,6 +329,24 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                     <MenuItem key={n} value={n}>{n}</MenuItem>
                   ))}
                 </TextField>
+                {/* O limite de transformações vale pela ficha principal (não pela forma) */}
+                {!character?.primaryFormId && (
+                  <TextField
+                    select
+                    label="Transformações por rodada"
+                    value={form.maxTransformationsPerRound}
+                    onChange={(e) => update("maxTransformationsPerRound", e.target.value)}
+                    fullWidth
+                    SelectProps={{ displayEmpty: true }}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Voltar à forma base não consome"
+                  >
+                    <MenuItem value="">Ilimitadas</MenuItem>
+                    {[1, 2, 3].map((n) => (
+                      <MenuItem key={n} value={n}>{n}</MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <TextField
                   select
                   label="Ataques por rodada"

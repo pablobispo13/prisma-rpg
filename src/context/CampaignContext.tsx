@@ -23,6 +23,7 @@ export type CampaignSummary = {
   defenseFormula: string | null;
   maxLifeFormula: string | null;
   reactionsPerRound: number | null;
+  characterImageColor: string | null;
   masterId: string;
   master: { id: string; username: string };
   members: { id: string; user: { id: string; username: string } }[];

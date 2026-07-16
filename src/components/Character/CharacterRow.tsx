@@ -26,6 +26,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../lib/api";
+import { characterImageSrc } from "../../lib/characterImage";
 import { Character } from "../../types/types";
 
 type Props = {
@@ -229,7 +230,7 @@ export function CharacterRow({
           }}
         >
           <Avatar
-            src={"/characters/" + character.image || undefined}
+            src={characterImageSrc(character.image)}
             sx={{
               width: 34,
               height: 34,

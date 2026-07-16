@@ -41,6 +41,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                                 owner: { select: { role: true } },
                                 // Para o botão de transformação na tela de combate
                                 forms: { select: { id: true, name: true, image: true } },
+                                // Limite de transformações fica na ficha principal
+                                primaryForm: { select: { maxTransformationsPerRound: true } },
                             },
                         },
                     },

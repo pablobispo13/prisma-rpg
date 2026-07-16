@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Avatar, Box, Stack, Typography, Skeleton, Tooltip } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import { Avatar, Box, Stack, Typography, Skeleton, Tooltip, Button, CircularProgress } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import BlockIcon from "@mui/icons-material/Block";
+import UploadIcon from "@mui/icons-material/Upload";
+import { toast } from "react-toastify";
 import api from "../../lib/api";
+import { characterImageSrc } from "../../lib/characterImage";
 
 type Props = {
   value: string;
@@ -13,19 +16,50 @@ type Props = {
 
 /**
  * Grid de seleção de imagens. Visível apenas para o admin.
- * Lista os arquivos em public/characters/ via /api/admin/images.
- * Para adicionar novas imagens: arquivo em public/characters/ + deploy.
+ * Lista imagens locais (public/characters/) e do Cloudinary (pasta prisma-rpg)
+ * via /api/admin/images, e permite subir novas direto pra pasta do Cloudinary.
  */
 export function ImagePicker({ value, onChange }: Props) {
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function loadImages() {
+    try {
+      const res = await api.get("/admin/images", { silent: true });
+      setImages(res.data.images ?? []);
+    } catch {
+      setImages([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    api.get("/admin/images", { silent: true })
-      .then((res) => setImages(res.data.images ?? []))
-      .catch(() => setImages([]))
-      .finally(() => setLoading(false));
+    loadImages();
   }, []);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const dataUri = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const res = await api.post("/admin/images", { dataUri, filename: file.name });
+      toast.success("Imagem enviada");
+      await loadImages();
+      if (res.data?.image) onChange(res.data.image); // já seleciona a nova imagem
+    } catch {
+      // erro já exibido pelo interceptor da api
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   if (loading) {
     return <Skeleton variant="rounded" height={120} />;
@@ -33,9 +67,29 @@ export function ImagePicker({ value, onChange }: Props) {
 
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" mb={1} display="block">
-        Escolha uma imagem da biblioteca (admin)
-      </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+        <Typography variant="caption" color="text.secondary">
+          Escolha uma imagem da biblioteca (admin)
+        </Typography>
+        <Button
+          size="small"
+          startIcon={uploading ? <CircularProgress size={14} /> : <UploadIcon />}
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Enviar imagem
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,.gif"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUpload(file);
+          }}
+        />
+      </Stack>
       <Stack direction="row" flexWrap="wrap" gap={1}>
         {/* Opção "sem imagem" */}
         <Tooltip title="Sem imagem">
@@ -65,7 +119,7 @@ export function ImagePicker({ value, onChange }: Props) {
         {images.map((filename) => {
           const isSelected = value === filename;
           return (
-            <Tooltip key={filename} title={filename}>
+            <Tooltip key={filename} title={filename.split("/").pop()}>
               <Box
                 onClick={() => onChange(filename)}
                 sx={{
@@ -80,7 +134,7 @@ export function ImagePicker({ value, onChange }: Props) {
                 }}
               >
                 <Avatar
-                  src={`/characters/${filename}`}
+                  src={characterImageSrc(filename)}
                   variant="rounded"
                   sx={{ width: "100%", height: "100%" }}
                 />
@@ -97,7 +151,7 @@ export function ImagePicker({ value, onChange }: Props) {
 
         {images.length === 0 && (
           <Typography variant="caption" color="text.disabled">
-            Nenhuma imagem disponível. Coloque arquivos em <code>public/characters/</code> e faça deploy.
+            Nenhuma imagem disponível. Use &quot;Enviar imagem&quot; acima.
           </Typography>
         )}
       </Stack>

@@ -20,6 +20,7 @@ export type CombatStats = {
 
 export type CombatContextType = {
     combat: any | null;
+    isMaster: boolean;
     isMyTurn: boolean;
     actionUsed: boolean;
     attackLimit: number;
@@ -61,7 +62,6 @@ export function CombatProvider({
 }) {
     const { user, loading: authLoading } = useAuth();
     const { activeCampaign } = useCampaign();
-    const isMaster = user?.role === "MESTRE";
 
     const [combat, setCombat] = useState<any | null>(null);
     const [actionUsed, setActionUsed] = useState(false);
@@ -234,6 +234,14 @@ export function CombatProvider({
 
     // "Ação usada" efetiva: usou ação não-ataque OU esgotou os ataques da rodada
     const actionUsedEffective = actionUsed || attacksLeft <= 0;
+
+    // Mestre = dono da mesa deste combate. Role global MESTRE ou admin
+    // participando como jogador não recebem controles de mestre no front
+    const isMaster =
+        !!user?.id &&
+        !!activeCampaign?.masterId &&
+        activeCampaign.masterId === user.id &&
+        (!combat?.campaignId || combat.campaignId === activeCampaign.id);
 
     const controlledCharacterIds =
         ordered
@@ -458,6 +466,7 @@ export function CombatProvider({
         <CombatContext.Provider
             value={{
                 combat,
+                isMaster,
                 isMyTurn,
                 actionUsed: actionUsedEffective,
                 attackLimit,

@@ -26,14 +26,18 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
       const characters: Character[] = res.data.characters;
 
       if (forcedCharacterId) {
-        // Personagem transformado aparece na lista com o id da forma ativa
+        // Personagem transformado aparece na lista com o id da forma ativa;
+        // o link pode ter sido aberto com o id de qualquer forma do grupo
         const found = characters.find(
-          (c) => c.id === forcedCharacterId || c.formGroup?.primaryId === forcedCharacterId
+          (c) =>
+            c.id === forcedCharacterId ||
+            c.formGroup?.primaryId === forcedCharacterId ||
+            c.formGroup?.options.some((o) => o.id === forcedCharacterId)
         );
-        if (found) {
-          setCharacter(found);
-          return;
-        }
+        // Visão forçada nunca cai em outra ficha: se o id não existe mais,
+        // melhor não mostrar nada do que abrir o personagem errado
+        setCharacter(found ?? null);
+        return;
       }
 
       if (characters.length === 0 && !autoCreateAttempted) {
@@ -60,9 +64,15 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
   if (loadingCharacter) return <>Carregando...</>
   if (!character) {
     return <Stack display={"flex"} height={"calc(100vh - 64px)"} justifyContent={"center"} flexDirection={"row"} gap={2} alignItems={"center"}>
-      <Button variant="outlined" onClick={() => createCharacterTemplate().finally(() => getCharacters())}>
-        Criar personagem de template
-      </Button>
+      {forcedCharacterId ? (
+        <Button disabled color="warning">
+          Personagem não encontrado nesta mesa
+        </Button>
+      ) : (
+        <Button variant="outlined" onClick={() => createCharacterTemplate().finally(() => getCharacters())}>
+          Criar personagem de template
+        </Button>
+      )}
     </Stack>;
   }
 

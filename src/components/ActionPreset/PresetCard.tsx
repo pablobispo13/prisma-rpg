@@ -136,6 +136,23 @@ export function PresetCard({
                 >
                   {actionName}
                 </Typography>
+                {preset.transformedOnly && (
+                  <Typography
+                    variant="caption"
+                    title="Aparece em combate apenas na forma transformada"
+                    sx={{
+                      px: 0.75,
+                      py: 0.25,
+                      borderRadius: 0.5,
+                      backgroundColor: "rgba(124,58,237,0.25)",
+                      color: "#a78bfa",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    🜂 Forma
+                  </Typography>
+                )}
               </Stack>
               <Typography
                 variant="caption"
