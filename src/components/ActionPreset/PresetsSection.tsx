@@ -32,6 +32,10 @@ export function PresetsSection({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ActionPreset | null>(null);
 
+  // TRANSFORM é gerado automaticamente (POST .../forms) e não é
+  // editável/removível manualmente — não aparece nesta lista
+  const editablePresets = presets.filter((p) => Boolean(p) && p.type !== "TRANSFORM");
+
   return (
     <>
       <Section
@@ -57,8 +61,8 @@ export function PresetsSection({
                   sx={{ borderRadius: 2 }}
                 />
               ))
-          ) : presets.length ? (
-            presets.filter(Boolean).map((preset) => {
+          ) : editablePresets.length ? (
+            editablePresets.map((preset) => {
               const attributeName =
                 preset.attribute.toLowerCase() as keyof typeof characterAttributes;
               const attributeValue = characterAttributes?.[attributeName] || 0;

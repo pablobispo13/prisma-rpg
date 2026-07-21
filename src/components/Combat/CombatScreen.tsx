@@ -23,8 +23,6 @@ import {
   TextField,
   Tooltip,
   Avatar,
-  Menu,
-  MenuItem,
 } from "@mui/material";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import EditIcon from "@mui/icons-material/Edit";
@@ -231,41 +229,40 @@ function presetTooltipContent(preset: ActionPresetType) {
   );
 }
 
-function transformTooltipContent(
-  char: any,
+function transformPresetTooltipContent(
+  preset: ActionPresetType,
+  isCurrent: boolean,
   transformLimit: number | null,
   transformsLeft: number | null,
 ) {
-  const forms: Array<{ id: string; name: string }> = char?.forms ?? [];
-  const isTransformed = !!char?.primaryFormId;
-  const currentName = isTransformed ? char?.name : (char?.activeFormId ? forms.find((f) => f.id === char.activeFormId)?.name : null) ?? char?.name;
-  const availableCount = forms.length + (isTransformed ? 1 : 0); // formas + volta à base
+  const isRevert = preset.targetFormId == null;
 
   return (
     <Box sx={{ p: 0.5, maxWidth: 260 }}>
-      <Typography fontWeight="bold" fontSize={13} mb={0.5}>Transformação</Typography>
-      <Typography fontSize={11} color="#ccc" mb={1} sx={{ fontStyle: "italic" }}>
-        Assumir uma forma alternativa do personagem
-      </Typography>
+      <Typography fontWeight="bold" fontSize={13} mb={0.5}>{preset.name}</Typography>
+      {preset.description && (
+        <Typography fontSize={11} color="#ccc" mb={1} sx={{ whiteSpace: "pre-wrap", fontStyle: "italic" }}>
+          {preset.description}
+        </Typography>
+      )}
 
       <Divider sx={{ borderColor: "#ffffff20", my: 0.75 }} />
 
       <Stack spacing={0.4}>
-        <Row label="Forma atual" value={currentName ?? "—"} highlight />
-        <Row label="Formas disponíveis" value={String(availableCount)} />
-        {transformLimit != null && (
+        {isCurrent && <Row label="Status" value="Forma atual" highlight />}
+        {!isRevert && transformLimit != null && (
           <Row
             label="Limite por dia"
             value={`${transformsLeft ?? 0} / ${transformLimit} restantes`}
             danger={(transformsLeft ?? 0) <= 0}
           />
         )}
-        {transformLimit == null && <Row label="Limite por dia" value="Ilimitado" />}
+        {!isRevert && transformLimit == null && <Row label="Limite por dia" value="Ilimitado" />}
+        {isRevert && <Row label="Limite por dia" value="Livre — não consome" />}
 
         <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
         <Typography fontSize={10} color="#9ca3af">
-          ✓ Ação livre — não consome o turno<br />
-          Voltar à forma base nunca gasta o limite diário
+          ✓ Ação livre — não consome o turno
         </Typography>
       </Stack>
     </Box>
@@ -349,13 +346,8 @@ function CombatScreenContent() {
   // Armed preset (user must pick an action before selecting targets)
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
-  // Transformação (troca de forma) em combate
-  const [formMenuAnchor, setFormMenuAnchor] = useState<null | HTMLElement>(null);
-  const [formGroupData, setFormGroupData] = useState<{
-    primaryId: string;
-    activeId: string;
-    options: { id: string; name: string; image: string | null }[];
-  } | null>(null);
+  // Transformação (troca de forma) em combate — cada forma disponível é um
+  // ActionPreset type=TRANSFORM (auto-gerado em POST .../forms)
   const [formLoading, setFormLoading] = useState(false);
 
   useEffect(() => {
@@ -569,40 +561,28 @@ function CombatScreenContent() {
   const transformsLeft =
     transformLimit == null ? null : Math.max(0, transformLimit - transformsUsedToday);
 
-  async function openFormMenu(e: React.MouseEvent<HTMLElement>) {
-    if (!transformChar || formLoading) return;
-    const anchor = e.currentTarget;
-    setFormLoading(true);
-    try {
-      const res = await api.get(`/characters/${transformChar.id}`);
-      const fg = res.data.formGroup;
-      if (!fg || fg.options.length < 2) {
-        toast.info("Este personagem não possui formas alternativas");
-        return;
-      }
-      setFormGroupData(fg);
-      setFormMenuAnchor(anchor);
-    } catch {
-      toast.error("Erro ao carregar formas do personagem");
-    } finally {
-      setFormLoading(false);
-    }
-  }
+  // Presets type=TRANSFORM só existem na ficha principal (nunca copiados
+  // pras formas — ver forms.ts) — se a forma ativa em combate é uma
+  // transformação, eles vêm por primaryForm; senão transformChar já é o
+  // principal e seus próprios presets servem de fonte
+  const transformPresets: ActionPresetType[] = transformChar?.primaryFormId
+    ? (transformChar?.primaryForm?.presets ?? [])
+    : (transformChar?.presets ?? []).filter((p: ActionPresetType) => p.type === "TRANSFORM");
 
-  async function switchFormInCombat(formId: string) {
-    if (!formGroupData) return;
-    setFormMenuAnchor(null);
+  async function performTransform(preset: ActionPresetType) {
+    if (!transformChar || formLoading || !canAct) return;
+    const primaryId = transformChar.primaryFormId ?? transformChar.id;
+    const formId = preset.targetFormId ?? primaryId;
+    if (formId === transformChar.id) return; // já está nesta forma
     setFormLoading(true);
     try {
-      await api.post(`/characters/${formGroupData.primaryId}/switch-form`, { formId });
-      const target = formGroupData.options.find((o) => o.id === formId);
-      toast.success(`Transformado em ${target?.name ?? "outra forma"}`);
+      await api.post(`/characters/${primaryId}/switch-form`, { formId });
+      toast.success(`Transformado: ${preset.name}`);
       await refreshCombat();
     } catch {
-      // mensagem de erro vem do interceptor (ex: reação pendente)
+      // mensagem de erro vem do interceptor (ex: reação pendente, limite diário)
     } finally {
       setFormLoading(false);
-      setFormGroupData(null);
     }
   }
   const presetsSource = isMaster ? activeCharacter : (myParticipant?.character ?? activeCharacter);
@@ -619,7 +599,7 @@ function CombatScreenContent() {
   const hasFormPresets = (presetsSource?.presets ?? []).some((p: ActionPresetType) => p.transformedOnly);
   const combatPresets: (ActionPresetType & { isAreaEffect?: boolean })[] =
     (presetsSource?.presets ?? []).filter((p: ActionPresetType) =>
-      isTransformedForm ? (!hasFormPresets || p.transformedOnly) : !p.transformedOnly
+      p.type !== "TRANSFORM" && (isTransformedForm ? (!hasFormPresets || p.transformedOnly) : !p.transformedOnly)
     );
 
   // Derived from the currently armed preset
@@ -983,39 +963,52 @@ function CombatScreenContent() {
               );
             })}
 
-            {transformHasForms && (
-              <Tooltip
-                title={transformTooltipContent(transformChar, transformLimit, transformsLeft)}
-                placement="top"
-                arrow
-                componentsProps={{ tooltip: { sx: { backgroundColor: "#1a1a2e", border: "1px solid rgba(124,58,237,0.4)", maxWidth: 280 } } }}
-              >
-                <Box sx={{ position: "relative", display: "inline-flex" }}>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    startIcon={<AutorenewIcon />}
-                    disabled={formLoading || !!pendingReactionRoll}
-                    onClick={openFormMenu}
-                    sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
-                  >
-                    {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
-                    Transformar
-                  </Button>
-                  {transformLimit != null && (
-                    <Chip
-                      label={`${transformsLeft ?? 0}/${transformLimit} dia`}
-                      size="small"
-                      sx={{
-                        position: "absolute", bottom: -8, left: -8, height: 16, fontSize: 9, pointerEvents: "none",
-                        bgcolor: (transformsLeft ?? 0) <= 0 ? "#7f1d1d" : "#3b1e5f",
-                        color: (transformsLeft ?? 0) <= 0 ? "#fca5a5" : "#c4b5fd",
-                      }}
-                    />
-                  )}
-                </Box>
-              </Tooltip>
-            )}
+            {transformPresets.map((preset) => {
+              const primaryId = transformChar?.primaryFormId ?? transformChar?.id;
+              const formId = preset.targetFormId ?? primaryId;
+              const isCurrent = formId === transformChar?.id;
+              const isRevert = preset.targetFormId == null;
+              const limitBlocked = !isRevert && transformLimit != null && (transformsLeft ?? 0) <= 0;
+              const disabled = !canAct || formLoading || !!pendingReactionRoll || isCurrent || limitBlocked;
+
+              return (
+                <Tooltip
+                  key={preset.id}
+                  title={transformPresetTooltipContent(preset, isCurrent, transformLimit, transformsLeft)}
+                  placement="top"
+                  arrow
+                  componentsProps={{ tooltip: { sx: { backgroundColor: "#1a1a2e", border: "1px solid rgba(124,58,237,0.4)", maxWidth: 280 } } }}
+                >
+                  <Box sx={{ position: "relative", display: "inline-flex" }}>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      startIcon={<AutorenewIcon />}
+                      disabled={disabled}
+                      onClick={() => performTransform(preset)}
+                      sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
+                    >
+                      {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
+                      {preset.name}
+                    </Button>
+                    {!isRevert && transformLimit != null && (
+                      <Chip
+                        label={`${transformsLeft ?? 0}/${transformLimit} dia`}
+                        size="small"
+                        sx={{
+                          position: "absolute", bottom: -8, left: -8, height: 16, fontSize: 9, pointerEvents: "none",
+                          bgcolor: (transformsLeft ?? 0) <= 0 ? "#7f1d1d" : "#3b1e5f",
+                          color: (transformsLeft ?? 0) <= 0 ? "#fca5a5" : "#c4b5fd",
+                        }}
+                      />
+                    )}
+                    {isCurrent && (
+                      <Chip label="Atual" size="small" sx={{ position: "absolute", top: -8, right: -8, height: 16, fontSize: 9, bgcolor: "#4c1d95", color: "#e9d5ff", pointerEvents: "none" }} />
+                    )}
+                  </Box>
+                </Tooltip>
+              );
+            })}
 
             {isMyTurn && (
               <Button variant="outlined" disabled={!canEndTurn || isLoading} onClick={endTurn}>
@@ -1024,37 +1017,6 @@ function CombatScreenContent() {
               </Button>
             )}
           </Stack>
-
-          {/* Menu de formas */}
-          <Menu
-            anchorEl={formMenuAnchor}
-            open={!!formMenuAnchor}
-            onClose={() => setFormMenuAnchor(null)}
-            PaperProps={{ sx: { background: "#16162a", border: "1px solid rgba(124,58,237,0.35)" } }}
-          >
-            {formGroupData?.options.map((opt) => {
-              const isActive = opt.id === formGroupData.activeId;
-              // Sem transformações restantes, só a volta pra forma base fica disponível
-              const blockedByLimit = transformsLeft === 0 && opt.id !== formGroupData.primaryId;
-              return (
-                <MenuItem
-                  key={opt.id}
-                  disabled={isActive || blockedByLimit}
-                  onClick={() => switchFormInCombat(opt.id)}
-                  sx={{ fontSize: 13, color: isActive ? "#a78bfa" : "#cdd1e0", gap: 1 }}
-                >
-                  <Avatar
-                    src={characterImageSrc(opt.image)}
-                    sx={{ width: 24, height: 24, fontSize: 11 }}
-                  >
-                    {opt.name[0]}
-                  </Avatar>
-                  {opt.name}
-                  {isActive && <Chip label="Ativa" size="small" sx={{ ml: 1, height: 16, fontSize: 9 }} />}
-                </MenuItem>
-              );
-            })}
-          </Menu>
 
           {canAct && !selectedPresetId && (
             <Typography fontSize={12} color="#ff9800">Selecione uma habilidade acima para agir.</Typography>

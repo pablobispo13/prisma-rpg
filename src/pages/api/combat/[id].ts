@@ -43,11 +43,15 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                                 owner: { select: { role: true } },
                                 // Para o botão de transformação na tela de combate
                                 forms: { select: { id: true, name: true, image: true } },
-                                // Limite e uso diário de transformações ficam na ficha principal
+                                // Limite e uso diário de transformações ficam na ficha principal.
+                                // presets aqui = só os type=TRANSFORM (existem só na ficha
+                                // principal, nunca copiados pras formas — ver forms.ts), pra
+                                // continuarem disponíveis mesmo com uma forma ativa em combate
                                 primaryForm: {
                                     select: {
                                         maxTransformationsPerDay: true,
                                         transformationDailyUsages: { where: { worldDay }, select: { usedCount: true } },
+                                        presets: { where: { type: "TRANSFORM" } },
                                     },
                                 },
                                 transformationDailyUsages: { where: { worldDay }, select: { usedCount: true } },

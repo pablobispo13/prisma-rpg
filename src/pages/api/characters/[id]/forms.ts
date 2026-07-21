@@ -1,6 +1,7 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../../lib/auth";
 import { prisma } from "../../../../lib/prisma";
+import { ActionType, AttributeType, TargetType } from "@prisma/client";
 
 /**
  * POST /api/characters/[id]/forms — cria uma forma alternativa (ex: transformação).
@@ -75,9 +76,13 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       },
     });
 
+    // Presets type=TRANSFORM só existem na ficha principal (nunca copiados
+    // pras formas — ver combat/[id].ts, que sempre lê pela primaryForm)
+    const copyablePresets = source.presets.filter((p) => p.type !== ActionType.TRANSFORM);
+
     const presetIdMap: Record<string, string> = {};
     await Promise.all(
-      source.presets.map(async (p) => {
+      copyablePresets.map(async (p) => {
         const newPreset = await tx.actionPreset.create({
           data: {
             name: p.name,
@@ -139,6 +144,51 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         counterAttackPresetId: source.counterAttackPresetId ? (presetIdMap[source.counterAttackPresetId] ?? null) : null,
       },
     });
+
+    /* =====================================================
+       PRESETS DE TRANSFORMAÇÃO (auto-gerados, ficha principal)
+       Ação livre (requiresTurn=false) — o limite fica em
+       Character.maxTransformationsPerDay, não no preset.
+    ===================================================== */
+    await tx.actionPreset.create({
+      data: {
+        name: `Virar ${formName}`,
+        description: `Assume a forma "${formName}".`,
+        type: ActionType.TRANSFORM,
+        targetType: TargetType.SELF,
+        diceFormula: "0",
+        attribute: AttributeType.STRENGTH,
+        requiresTurn: false,
+        allowOutOfCombat: true,
+        appliesEffect: false,
+        characterId: source.id,
+        targetFormId: newForm.id,
+      },
+    });
+
+    // Preset de "voltar à base" é compartilhado por todas as formas —
+    // só cria na primeira vez (targetFormId: null identifica ele)
+    const hasRevertPreset = await tx.actionPreset.findFirst({
+      where: { characterId: source.id, type: ActionType.TRANSFORM, targetFormId: null },
+      select: { id: true },
+    });
+    if (!hasRevertPreset) {
+      await tx.actionPreset.create({
+        data: {
+          name: "Voltar à forma base",
+          description: `Retorna à ficha original (${source.name}). Não consome o limite diário de transformações.`,
+          type: ActionType.TRANSFORM,
+          targetType: TargetType.SELF,
+          diceFormula: "0",
+          attribute: AttributeType.STRENGTH,
+          requiresTurn: false,
+          allowOutOfCombat: true,
+          appliesEffect: false,
+          characterId: source.id,
+          targetFormId: null,
+        },
+      });
+    }
 
     return newForm;
   });

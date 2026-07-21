@@ -78,7 +78,7 @@ export type ActionPresetType = {
     characterId: string;
     name: string;
     description?: string | null;
-    type: "SKILL" | "ATTACK" | "TEST" | "REACT" | "SUPPORT" | "SPELL" | "HEAL" | "BUFF" | "DEBUFF";
+    type: "SKILL" | "ATTACK" | "TEST" | "REACT" | "SUPPORT" | "SPELL" | "HEAL" | "BUFF" | "DEBUFF" | "TRANSFORM";
     targetType: string;
     diceFormula: string;
     impactFormula?: string | null;
@@ -107,6 +107,9 @@ export type ActionPresetType = {
     // Uso já registrado no worldDay atual (só vem preenchido no GET de
     // combate, escopado ao dia vigente da mesa — ver combat/[id].ts)
     dailyUsages?: { usedCount: number }[];
+    // Só em presets type=TRANSFORM: forma-alvo (null = volta à base).
+    // Gerado automaticamente em POST /characters/[id]/forms
+    targetFormId?: string | null;
     // Multi-efeito: quando presente e não-vazio, substitui os campos legados
     effectSelectionMode?: "ALL" | "CHOOSE_ONE" | "CHOOSE_ANY";
     effects?: PresetEffectType[];

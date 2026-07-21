@@ -26,6 +26,10 @@ enum ActionType {
   BUFF
   DEBUFF
   SUPPORT
+  // Assumir uma forma alternativa do personagem (ver Character.forms).
+  // Preset gerado automaticamente pelo sistema (POST .../forms), não
+  // selecionável manualmente no editor de habilidades — ver targetFormId.
+  TRANSFORM
 }
 
 enum AttributeType {
@@ -283,6 +287,10 @@ model Character {
   statusEffects CharacterEffect[]
   dailyUsages   PresetDailyUsage[]
   transformationDailyUsages CharacterTransformationDailyUsage[]
+
+  // Presets type=TRANSFORM (de qualquer personagem) que apontam pra esta
+  // forma como alvo — ver ActionPreset.targetFormId
+  transformPresets ActionPreset[] @relation("TransformTargetForm")
 }
 
 ///////////////////////
@@ -322,6 +330,13 @@ model ActionPreset {
   // Limite de usos por dia (por personagem). null = ilimitado. O "dia"
   // é o Campaign.worldDay; o mestre avança o dia e o limite libera de novo.
   usesPerDay Int?
+
+  // Só quando type=TRANSFORM: forma que este preset assume ao ser usado.
+  // null = volta à forma base (o próprio personagem principal). Gerado
+  // automaticamente em POST /characters/[id]/forms — ver Character.maxTransformationsPerDay
+  // (o limite diário continua por personagem, não por preset).
+  targetFormId String?    @db.ObjectId
+  targetForm   Character? @relation("TransformTargetForm", fields: [targetFormId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   // Multi-efeito: quando o preset tem linhas em `effects`, elas substituem os
   // campos legados abaixo (durationTurns/statAffected/effectAmount/...)

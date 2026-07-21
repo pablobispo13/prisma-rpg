@@ -10,6 +10,7 @@ export const ACTION_COLORS: Record<ActionType, string> = {
   HEAL: "#10B981",        // Verde escuro
   BUFF: "#60A5FA",        // Azul claro
   DEBUFF: "#F87171",      // Vermelho claro
+  TRANSFORM: "#A78BFA",   // Roxo (mesma família do SKILL — ação de forma)
 };
 
 export const ACTION_ICONS: Record<ActionType, string> = {
@@ -22,6 +23,7 @@ export const ACTION_ICONS: Record<ActionType, string> = {
   HEAL: "💚",
   BUFF: "⬆️",
   DEBUFF: "⬇️",
+  TRANSFORM: "🜂",
 };
 
 export const TARGET_NAMES: Record<TargetType, string> = {
@@ -41,6 +43,7 @@ export const ACTION_NAMES: Record<ActionType, string> = {
   HEAL: "Cura",
   BUFF: "Bonus",
   DEBUFF: "Penalidade",
+  TRANSFORM: "Transformação",
 };
 
 export function getActionColor(type: ActionType): string {

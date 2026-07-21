@@ -224,6 +224,15 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (!preset)
         return res.status(404).json({ message: "Preset inválido" });
 
+    // TRANSFORM não rola dado nem aplica efeito — é resolvido inteiramente
+    // por POST /characters/[id]/switch-form (troca de forma, limite diário
+    // por personagem). O front nunca chama /roll pra esse tipo de preset.
+    if (preset.type === ActionType.TRANSFORM) {
+        return res.status(400).json({
+            message: "Presets de transformação usam /characters/[id]/switch-form, não /roll",
+        });
+    }
+
     /* =====================================================
        AÇÃO PRINCIPAL DO TURNO (1x por turno, fora ataque)
        Ataques têm slot próprio (attacksUsed/maxAttacksPerRound, abaixo).

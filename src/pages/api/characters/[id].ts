@@ -214,9 +214,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         },
       });
 
+      // TRANSFORM aponta pra uma forma do personagem ORIGINAL (targetFormId) —
+      // copiar verbatim geraria um preset "morto" no clone (forma não pertence
+      // a ele, ver switch-form.ts). Clone não herda formas, então não copia.
       const presetIdMap: Record<string, string> = {};
       await Promise.all(
-        source.presets.map(async (p) => {
+        source.presets.filter((p) => p.type !== "TRANSFORM").map(async (p) => {
           const newPreset = await tx.actionPreset.create({
             data: {
               name: p.name,
