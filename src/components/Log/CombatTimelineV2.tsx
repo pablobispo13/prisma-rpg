@@ -107,6 +107,10 @@ export function CombatTimelineV2({ logs }: CombatTimelineV2Props) {
         const dmgLog   = groupLogs.find((l) => l.type === "DAMAGE");
         const healLog  = groupLogs.find((l) => l.type === "HEAL");
         const reactLogs = groupLogs.filter((l) => l.type === "REACTION");
+        // Efeitos aplicados nesta mesma rolagem (controle, buff, DoT/HoT
+        // inicial etc.) — sem isso, ficavam registrados no banco mas somem
+        // da timeline por caírem no mesmo grupo da rolagem principal
+        const effectLogs = groupLogs.filter((l) => l.type === "MANUAL_OVERRIDE");
 
         const roll = mainLog.roll;
         const succeeded = roll?.success ?? roll?.sucess;
@@ -197,6 +201,13 @@ export function CombatTimelineV2({ logs }: CombatTimelineV2Props) {
                     {healLog?.message}
                   </Typography>
                 )}
+
+                {/* Efeitos aplicados por esta ação (controle, buff/debuff, DoT/HoT) */}
+                {effectLogs.map((el) => (
+                  <Typography key={el.id} variant="caption" sx={{ color: "#c084fc", fontSize: 10 }}>
+                    ⚙ {el.message}
+                  </Typography>
+                ))}
               </Stack>
 
               {/* Chips */}
