@@ -118,6 +118,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       effectSelectionMode,
       effects,
       usesPerDay,
+      targetFormId,
     } = req.body;
 
     if (!name || !type || !targetType || !diceFormula || !attribute || !characterId) {
@@ -170,6 +171,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         isAreaEffect: isAreaEffect ?? false,
         transformedOnly: transformedOnly ?? false,
         attribute: attribute as AttributeType,
+        // Só relevante quando type=TRANSFORM (forma-alvo; null = volta à base)
+        targetFormId: type === "TRANSFORM" && targetFormId ? targetFormId : null,
         characterId,
         durationTurns: durationTurns ?? null,
         statAffected: statAffected ?? null,

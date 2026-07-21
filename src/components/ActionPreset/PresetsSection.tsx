@@ -32,9 +32,10 @@ export function PresetsSection({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ActionPreset | null>(null);
 
-  // TRANSFORM é gerado automaticamente (POST .../forms) e não é
-  // editável/removível manualmente — não aparece nesta lista
-  const editablePresets = presets.filter((p) => Boolean(p) && p.type !== "TRANSFORM");
+  // TRANSFORM (transformação) é auto-gerado ao criar uma forma, mas também
+  // pode ser criado/editado manualmente aqui como qualquer outro preset —
+  // PresetModal mostra um seletor de "Forma-alvo" no lugar de Alvo/Atributo
+  const editablePresets = presets.filter(Boolean);
 
   return (
     <>

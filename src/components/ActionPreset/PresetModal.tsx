@@ -36,6 +36,7 @@ const ACTION_TYPES = [
     { value: "DEBUFF",  label: "Debuff" },
     { value: "SPELL",   label: "Magia" },
     { value: "TEST",    label: "Teste" },
+    { value: "TRANSFORM", label: "Transformação" },
 ];
 
 const TARGET_TYPES = [
@@ -184,6 +185,7 @@ const BLANK = {
     contestAttribute: "" as string,
     effectSelectionMode: "ALL" as string,
     usesPerDay: "" as string,
+    targetFormId: "" as string,
     effects: [] as EffectRow[],
 };
 
@@ -215,6 +217,25 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
     const [diceError, setDiceError]     = useState<string | null>(null);
     const [impactError, setImpactError] = useState<string | null>(null);
     const [saving, setSaving]           = useState(false);
+
+    // Formas disponíveis pro seletor "Forma-alvo" (type=TRANSFORM) — mesmo
+    // shape do formGroup de GET /characters/[id] (ficha principal + formas)
+    const [formGroupOptions, setFormGroupOptions] = useState<{ id: string; name: string }[]>([]);
+    const [primaryId, setPrimaryId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open || !characterId) return;
+        api.get(`/characters/${characterId}`)
+            .then(res => {
+                const fg = res.data?.formGroup;
+                setFormGroupOptions(fg?.options ?? []);
+                setPrimaryId(fg?.primaryId ?? null);
+            })
+            .catch(() => {
+                setFormGroupOptions([]);
+                setPrimaryId(null);
+            });
+    }, [open, characterId]);
 
     useEffect(() => {
         if (open) {
@@ -258,6 +279,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     contestAttribute:preset.contestAttribute ?? "",
                     effectSelectionMode: preset.effectSelectionMode ?? "ALL",
                     usesPerDay:      preset.usesPerDay != null ? String(preset.usesPerDay) : "",
+                    targetFormId:    preset.targetFormId ?? "",
                     effects: preset.effects && preset.effects.length > 0
                         ? preset.effects.map(rowFromPresetEffect)
                         : legacyRow ? [legacyRow] : [],
@@ -289,7 +311,54 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
     const showArea    = form.targetType === "ENEMY" || form.targetType === "MULTIPLE";
     const isContested = form.resolution === "CONTESTED";
 
+    // TRANSFORM (auto-gerado em POST .../forms, ou escolhido manualmente
+    // aqui) não rola dado nem aplica efeito — só nome/descrição/forma-alvo
+    // importam; os demais campos ficam ocultos e vão com valores fixos
+    const formTypeIsTransform = form.type === "TRANSFORM";
+
     const handleSave = async () => {
+        if (!form.name.trim()) return;
+
+        if (formTypeIsTransform) {
+            const payload = {
+                name: form.name.trim(),
+                description: form.description,
+                type: "TRANSFORM",
+                targetFormId: form.targetFormId || null,
+                targetType: "SELF",
+                diceFormula: "0",
+                attribute: "STRENGTH",
+                modifier: 0,
+                impactFormula: null,
+                critThreshold: null,
+                critMultiplier: null,
+                requiresTurn: false,
+                allowOutOfCombat: true,
+                isAreaEffect: false,
+                transformedOnly: false,
+                resolution: "DEFENSE",
+                contestAttribute: null,
+                effectSelectionMode: "ALL",
+                usesPerDay: null,
+                appliesEffect: false,
+                effects: [],
+                characterId,
+            };
+            setSaving(true);
+            try {
+                if (preset?.id) {
+                    await api.put(`/actionPreset/${preset.id}`, payload);
+                } else {
+                    await api.post("/actionPreset", payload);
+                }
+                setForm(BLANK);
+                onClose();
+            } finally {
+                setSaving(false);
+            }
+            return;
+        }
+
         const diceErr   = validateDiceFormula(form.diceFormula);
         const impactErr = form.impactFormula ? validateDiceFormula(form.impactFormula) : null;
         if (diceErr)   { setDiceError(diceErr);     return; }
@@ -421,21 +490,41 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                                 ))}
                             </TextField>
-                            <TextField select label="Alvo" value={form.targetType}
-                                onChange={e => update("targetType", e.target.value)} fullWidth size="small">
-                                {TARGET_TYPES.map(t => (
-                                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
-                                ))}
-                            </TextField>
-                            <TextField select label="Atributo" value={form.attribute}
-                                onChange={e => update("attribute", e.target.value)} fullWidth size="small">
-                                {ATTRIBUTES.map(a => (
-                                    <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
-                                ))}
-                            </TextField>
+                            {formTypeIsTransform ? (
+                                <TextField select label="Forma-alvo" value={form.targetFormId}
+                                    onChange={e => update("targetFormId", e.target.value)} fullWidth size="small"
+                                    helperText="Vazio = volta à forma base">
+                                    <MenuItem value="">Voltar à forma base</MenuItem>
+                                    {formGroupOptions.filter(o => o.id !== primaryId).map(o => (
+                                        <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            ) : (
+                                <>
+                                    <TextField select label="Alvo" value={form.targetType}
+                                        onChange={e => update("targetType", e.target.value)} fullWidth size="small">
+                                        {TARGET_TYPES.map(t => (
+                                            <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                    <TextField select label="Atributo" value={form.attribute}
+                                        onChange={e => update("attribute", e.target.value)} fullWidth size="small">
+                                        {ATTRIBUTES.map(a => (
+                                            <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                </>
+                            )}
                         </Stack>
+                        {formTypeIsTransform && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                                Transformação não consome turno nem rola dado — o limite de usos fica
+                                no personagem (campo &quot;Transformações por dia&quot; na ficha), não neste preset.
+                            </Typography>
+                        )}
                     </Box>
 
+                    {!formTypeIsTransform && <>
                     <Divider sx={{ borderColor: "rgba(255,255,255,0.07)" }} />
 
                     {/* ── Rolagem ── */}
@@ -707,6 +796,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                             })}
                         </Stack>
                     </Box>
+                    </>}
                 </Stack>
             </DialogContent>
 

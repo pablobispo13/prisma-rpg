@@ -88,6 +88,7 @@ async function handler(
       effectSelectionMode,
       effects,
       usesPerDay,
+      targetFormId,
     } = req.body;
 
     // `effects` presente = substituição completa das linhas de efeito
@@ -111,6 +112,18 @@ async function handler(
       await prisma.presetEffect.deleteMany({ where: { presetId: id } });
     }
 
+    // Forma-alvo só faz sentido pra type=TRANSFORM (considera o type que vai
+    // valer após este update — o enviado, ou o já existente no preset).
+    // Virando outro tipo, limpa; virando/ficando TRANSFORM, aplica o enviado
+    // ("" do front = volta à base = null).
+    const effectiveType = type ? (type as ActionType) : preset.type;
+    const targetFormIdValue: string | null | undefined =
+      effectiveType !== ActionType.TRANSFORM
+        ? null
+        : targetFormId !== undefined
+          ? (targetFormId || null)
+          : undefined;
+
     const updatedPreset = await prisma.actionPreset.update({
       where: { id },
       data: {
@@ -118,6 +131,7 @@ async function handler(
         contestAttribute: contestAttribute !== undefined ? (contestAttribute as AttributeType | null) : undefined,
         effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
         usesPerDay: usesPerDayValue,
+        targetFormId: targetFormIdValue,
         ...(effectRows ? { effects: { create: effectRows } } : {}),
         name: name ?? undefined,
         description: description ?? undefined,
