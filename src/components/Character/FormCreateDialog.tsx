@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { useCampaign } from "../../context/CampaignContext";
 import { ImagePicker } from "./ImagePicker";
 
 type Props = {
@@ -27,7 +28,8 @@ type Props = {
 
 export function FormCreateDialog({ open, onClose, primaryId, characterName, onCreated }: Props) {
   const { user } = useAuth();
-  const isAdmin = !!user?.isAdmin;
+  const { activeCampaign } = useCampaign();
+  const isMasterOfTable = !!user?.isAdmin || (!!user && activeCampaign?.masterId === user.id);
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -75,7 +77,7 @@ export function FormCreateDialog({ open, onClose, primaryId, characterName, onCr
             fullWidth
             autoFocus
           />
-          {isAdmin && (
+          {isMasterOfTable && (
             <ImagePicker value={image} onChange={(filename) => setImage(filename)} />
           )}
         </Stack>

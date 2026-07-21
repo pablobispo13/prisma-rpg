@@ -36,6 +36,7 @@ import { PresetCard } from "../ActionPreset/PresetCard";
 import { InventoryItemCard } from "../Inventory/InventoryItemCard";
 import { ActionLogCard } from "./ActionLogCard";
 import { CharacterHeaderCard } from "./CharacterHeaderCard";
+import { CharacterNotesModal } from "./CharacterNotesModal";
 import { AttributeCard } from "../Jogador/AttributeCard";
 import { LifeBarCard } from "../Jogador/LifeBarCard";
 import { StreamPiP } from "../Stream/StreamPiP";
@@ -60,6 +61,7 @@ export function CharacterSheet({
   const [preset, setPreset] = useState<ActionPresetType | undefined>();
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [editStatsOpen, setEditStatsOpen] = useState(false);
+  const [notesModalField, setNotesModalField] = useState<"history" | "notes" | null>(null);
   const [presetOpen, setPresetOpen] = useState(false);
   const { activeCampaign } = useCampaign();
   const masterId = activeCampaign?.masterId ?? null;
@@ -304,6 +306,8 @@ export function CharacterSheet({
               onEditAction={() => {
                 setEditStatsOpen(true);
               }}
+              onHistoryAction={() => setNotesModalField("history")}
+              onNotesAction={() => setNotesModalField("notes")}
               canSwitchForm={canEdit}
               onFormSwitched={onFormSwitched}
             />
@@ -527,6 +531,15 @@ export function CharacterSheet({
             getCharacter();
             setEditStatsOpen(false);
           }}
+        />
+
+        <CharacterNotesModal
+          open={notesModalField !== null}
+          field={notesModalField ?? "history"}
+          character={character}
+          canEdit={canEdit}
+          onClose={() => setNotesModalField(null)}
+          onSaved={getCharacter}
         />
       </Box>
     </Stack>

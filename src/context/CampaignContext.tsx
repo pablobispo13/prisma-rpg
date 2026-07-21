@@ -24,6 +24,8 @@ export type CampaignSummary = {
   maxLifeFormula: string | null;
   reactionsPerRound: number | null;
   characterImageColor: string | null;
+  worldDay: number | null;
+  abilitySanityCost: number | null;
   masterId: string;
   master: { id: string; username: string };
   members: { id: string; user: { id: string; username: string } }[];

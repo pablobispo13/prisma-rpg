@@ -43,7 +43,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             },
             logs: {
                 orderBy: { createdAt: "asc" },
-                select: { id: true, type: true, message: true, createdAt: true },
+                select: { id: true, type: true, message: true, createdAt: true, masterOnly: true },
             },
             rollResults: {
                 select: {
@@ -80,6 +80,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
         return {
             ...combat,
+            // Ajustes manuais do mestre ficam ocultos para jogadores
+            logs: isMaster ? combat.logs : combat.logs.filter((l) => l.masterOnly !== true),
             stats: {
                 rounds: combat.round,
                 participants: Object.entries(statsByChar).map(([id, s]) => ({ id, ...s })),

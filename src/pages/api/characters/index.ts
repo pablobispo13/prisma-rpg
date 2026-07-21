@@ -2,6 +2,7 @@ import { NextApiResponse } from "next";
 import { withCampaign, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
 import { Prisma } from "@prisma/client";
+import { hideCharacterSanity } from "../../../lib/campaignAccess";
 
 // Includes compartilhados entre a listagem e a substituição por forma ativa
 const masterInclude = {
@@ -9,6 +10,7 @@ const masterInclude = {
   presets: {
     orderBy: { name: "asc" },
     include: {
+      effects: { orderBy: { sortOrder: "asc" } },
       characterEffects: true,
       dodgeCharacters: true,
       blockCharacters: true,
@@ -106,7 +108,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return activeForm ? { ...activeForm, formGroup } : { ...primary, formGroup };
     });
 
-    res.status(200).json({ characters: result });
+    res.status(200).json({ characters: result.map((c) => hideCharacterSanity(c, isMaster)) });
     return;
   }
 
@@ -168,7 +170,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       include: masterInclude,
     });
 
-    res.status(201).json(character);
+    res.status(201).json(hideCharacterSanity(character, isMaster));
     return;
   }
 

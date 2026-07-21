@@ -81,6 +81,25 @@ export async function getCharacterCampaign(characterId: string): Promise<string 
 }
 
 /**
+ * Sanidade é controlada apenas pelo mestre — jogadores não têm visibilidade
+ * sobre o valor. Remove os campos da resposta quando o requisitante não é
+ * o mestre (nem admin). Aplicar em toda rota que devolve Character/objetos
+ * com Character aninhado para o cliente.
+ */
+export function hideCharacterSanity<T extends {
+  sanity?: number | null;
+  maxSanity?: number | null;
+  abilitySanityCostOverride?: number | null;
+}>(character: T, isMaster: boolean): T {
+  if (isMaster) return character;
+  const result = { ...character };
+  delete result.sanity;
+  delete result.maxSanity;
+  delete result.abilitySanityCostOverride;
+  return result;
+}
+
+/**
  * Gera um código de convite de 6 caracteres alfanuméricos.
  */
 export function generateInviteCode(length = 6): string {

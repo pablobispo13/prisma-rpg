@@ -56,11 +56,15 @@ type HpTier = { label: string; color: string; bgColor: string };
 const EFFECT_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
   STAT_BUFF:       { icon: "↑", label: "Buff",        color: "#4ade80", bg: "rgba(74,222,128,0.12)" },
   STAT_DEBUFF:     { icon: "↓", label: "Debuff",      color: "#f87171", bg: "rgba(248,113,113,0.12)" },
+  DEFENSE_BUFF:    { icon: "🛡↑", label: "Defesa +",   color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
+  DEFENSE_DEBUFF:  { icon: "🛡↓", label: "Defesa −",   color: "#fb923c", bg: "rgba(251,146,60,0.12)" },
   ROLL_BONUS:      { icon: "+", label: "Bônus",       color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
   ROLL_PENALTY:    { icon: "−", label: "Penalidade",  color: "#f97316", bg: "rgba(249,115,22,0.12)" },
   STUN:            { icon: "💫", label: "Atordoado",   color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
   HEAL_OVER_TIME:  { icon: "♥", label: "Regen",       color: "#34d399", bg: "rgba(52,211,153,0.12)" },
   DAMAGE_OVER_TIME:{ icon: "☠", label: "DoT",         color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  CONTROLLED:      { icon: "🧠", label: "Controlado",  color: "#c084fc", bg: "rgba(192,132,252,0.14)" },
+  DAMAGE_TAKEN_BONUS: { icon: "🎯", label: "Marcado",  color: "#fb7185", bg: "rgba(251,113,133,0.14)" },
 };
 
 const ATTR_SHORT: Record<string, string> = {
@@ -76,16 +80,18 @@ function HpBar({ current, max, tempHp, height = 7 }: { current: number; max: num
 
   return (
     <Box sx={{ height, borderRadius: height / 2, bgcolor: "#2a2a3a", position: "relative", overflow: "hidden" }}>
-      <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${hpPct}%`, bgcolor: tier.color, transition: "width 0.6s ease" }} />
+      {/* Rastro de dano: barra fantasma que encolhe com atraso, mostrando o HP perdido */}
+      <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${hpPct}%`, bgcolor: "#fca5a5", opacity: 0.75, transition: "width 0.9s ease 0.45s" }} />
+      <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${hpPct}%`, bgcolor: tier.color, transition: "width 0.35s ease" }} />
       {tmpPct > 0 && (
-        <Box sx={{ position: "absolute", left: `${hpPct}%`, top: 0, bottom: 0, width: `${tmpPct}%`, bgcolor: "#60a5fa", transition: "width 0.6s ease", opacity: 0.85 }} />
+        <Box sx={{ position: "absolute", left: `${hpPct}%`, top: 0, bottom: 0, width: `${tmpPct}%`, bgcolor: "#60a5fa", transition: "left 0.35s ease, width 0.6s ease", opacity: 0.85 }} />
       )}
     </Box>
   );
 }
 
 const EFFECT_SHOWS_STAT  = new Set(["STAT_BUFF", "STAT_DEBUFF"]);
-const EFFECT_SHOWS_VALUE = new Set(["STAT_BUFF", "STAT_DEBUFF", "ROLL_BONUS", "ROLL_PENALTY", "HEAL_OVER_TIME", "DAMAGE_OVER_TIME"]);
+const EFFECT_SHOWS_VALUE = new Set(["STAT_BUFF", "STAT_DEBUFF", "DEFENSE_BUFF", "DEFENSE_DEBUFF", "ROLL_BONUS", "ROLL_PENALTY", "HEAL_OVER_TIME", "DAMAGE_OVER_TIME"]);
 
 function EffectChips({ effects, tempHp }: { effects: any[]; tempHp?: number }) {
   const chips: React.ReactNode[] = [];
@@ -249,7 +255,17 @@ function CombatScreenContent() {
     selectTarget, clearTargets, useMainAction, endTurn, endCombat, pendingReactionRoll,
     resolveReaction, refreshCombat,
     isLoading, combatStats, clearStats,
+    effectSelectionRequest, confirmEffectSelection, cancelEffectSelection,
   } = useCombat();
+
+  // Escolha de efeito (habilidade CHOOSE_ONE/CHOOSE_ANY)
+  const [chosenEffectIds, setChosenEffectIds] = useState<string[]>([]);
+  useEffect(() => { setChosenEffectIds([]); }, [effectSelectionRequest?.presetId]);
+
+  // Ajuste manual de sanidade (mestre)
+  const [sanityEditOpen, setSanityEditOpen] = useState(false);
+  const [sanityEditParticipant, setSanityEditParticipant] = useState<any>(null);
+  const [sanityEditValue, setSanityEditValue] = useState<number>(0);
 
   const router = useRouter();
   const { activeCampaign } = useCampaign();
@@ -271,7 +287,8 @@ function CombatScreenContent() {
 
   // Floating damage numbers
   const prevLifeRef = useRef<Record<string, number>>({});
-  const [floatingDamages, setFloatingDamages] = useState<Record<string, { id: number; delta: number; isHeal: boolean }[]>>({});
+  const prevLogCountRef = useRef<number | null>(null);
+  const [floatingDamages, setFloatingDamages] = useState<Record<string, { id: number; delta: number; isHeal: boolean; xJitter: number; big: boolean }[]>>({});
 
   // Fullscreen battlefield
   const [battleFullscreen, setBattleFullscreen] = useState(false);
@@ -323,13 +340,30 @@ function CombatScreenContent() {
 
   useEffect(() => {
     if (!combat?.participants) return;
-    const events: Record<string, { id: number; delta: number; isHeal: boolean }> = {};
+    const events: Record<string, { id: number; delta: number; isHeal: boolean; xJitter: number; big: boolean }> = {};
+
+    // Mudança de HP sem nenhum log novo visível = ajuste silencioso do mestre.
+    // Para NPCs (HP oculto), jogadores não devem ver o número flutuante nesse caso.
+    const visibleLogCount = combat.logs?.length ?? 0;
+    const newLogsArrived = prevLogCountRef.current === null || visibleLogCount !== prevLogCountRef.current;
 
     for (const p of combat.participants as any[]) {
       const prev = prevLifeRef.current[p.character.id];
       if (prev !== undefined && p.currentLife !== prev) {
+        const hiddenHp = !isMaster && checkIsNpc(p.character, masterId);
+        if (hiddenHp && !newLogsArrived) {
+          prevLifeRef.current[p.character.id] = p.currentLife;
+          continue;
+        }
         const delta = Math.abs(p.currentLife - prev);
-        events[p.character.id] = { id: Date.now() + Math.random(), delta, isHeal: p.currentLife > prev };
+        const big = delta >= Math.max(10, (p.character.maxLife ?? 0) * 0.25);
+        events[p.character.id] = {
+          id: Date.now() + Math.random(),
+          delta,
+          isHeal: p.currentLife > prev,
+          xJitter: Math.round((Math.random() - 0.5) * 28),
+          big,
+        };
       }
       prevLifeRef.current[p.character.id] = p.currentLife;
     }
@@ -355,6 +389,11 @@ function CombatScreenContent() {
       });
     }, 1800);
   }, [livesKey]);
+
+  // Atualiza a contagem de logs visíveis DEPOIS da detecção acima (ordem de declaração)
+  useEffect(() => {
+    if (combat) prevLogCountRef.current = combat.logs?.length ?? 0;
+  }, [combat]);
 
   /* ---- turn notification ---- */
   useEffect(() => {
@@ -399,6 +438,17 @@ function CombatScreenContent() {
     });
     setHpEditOpen(false);
     setHpEditParticipant(null);
+    await refreshCombat();
+  }
+
+  async function submitSanityEdit() {
+    if (!sanityEditParticipant) return;
+    await api.post("/combat/control", {
+      action: "adjustSanity", combatId: combat.id,
+      characterId: sanityEditParticipant.character.id, newSanity: sanityEditValue,
+    });
+    setSanityEditOpen(false);
+    setSanityEditParticipant(null);
     await refreshCombat();
   }
 
@@ -529,6 +579,15 @@ function CombatScreenContent() {
   const reactionBlocked =
     reactionLimit != null && (reactionParticipant?.reactionsUsed ?? 0) >= reactionLimit;
 
+  // Defesa efetiva do alvo da reação (base + buffs/debuffs de defesa ativos)
+  const reactionTargetDefense = Math.max(0,
+    (reactionTargetChar?.baseDefense ?? 0) +
+    (reactionTargetChar?.statusEffects ?? []).reduce((sum: number, e: any) =>
+      e.type === "DEFENSE_BUFF" ? sum + Math.abs(e.value)
+      : e.type === "DEFENSE_DEBUFF" ? sum - Math.abs(e.value)
+      : sum, 0)
+  );
+
   return (
     <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "80px 1fr 0px", backgroundColor: "#0e0e1a", color: "#fff", overflow: "hidden" }}>
       <Head><title>Tela de combate</title></Head>
@@ -583,6 +642,8 @@ function CombatScreenContent() {
                 const tier = getHpTier(p.currentLife, p.character.maxLife);
                 const hpPct = p.character.maxLife > 0 ? (p.currentLife / p.character.maxLife) * 100 : 0;
                 const floating = floatingDamages[p.character.id] ?? [];
+                const hitFx = floating.some((f) => !f.isHeal);
+                const healFx = !hitFx && floating.length > 0;
 
                 return (
                   <Reorder.Item
@@ -604,23 +665,28 @@ function CombatScreenContent() {
                       {floating.map((ev) => (
                         <motion.div
                           key={ev.id}
-                          initial={{ opacity: 1, y: 0, x: "50%" }}
-                          animate={{ opacity: 0, y: -48 }}
+                          initial={{ opacity: 0, y: 6, scale: 0.4 }}
+                          animate={{ opacity: [0, 1, 1, 0], y: -54, scale: [0.4, ev.big ? 1.45 : 1.15, 1, 1] }}
                           exit={{ opacity: 0 }}
-                          transition={{ duration: 1.6, ease: "easeOut" }}
+                          transition={{ duration: 1.6, ease: "easeOut", times: [0, 0.15, 0.7, 1] }}
                           style={{
                             position: "absolute",
                             top: 4,
-                            right: 8,
+                            right: 8 + ev.xJitter,
                             zIndex: 20,
                             pointerEvents: "none",
-                            fontWeight: 800,
-                            fontSize: 18,
-                            color: ev.isHeal ? "#4ade80" : "#f87171",
-                            textShadow: ev.isHeal ? "0 0 8px #4ade80" : "0 0 8px #f87171",
+                            fontWeight: 900,
+                            fontSize: ev.big ? 26 : 18,
+                            fontFamily: "monospace",
+                            color: ev.isHeal ? "#4ade80" : ev.big ? "#fbbf24" : "#f87171",
+                            textShadow: ev.isHeal
+                              ? "0 0 10px rgba(74,222,128,0.9), 0 1px 2px #000"
+                              : ev.big
+                                ? "0 0 12px rgba(251,146,60,0.95), 0 1px 2px #000"
+                                : "0 0 8px rgba(248,113,113,0.9), 0 1px 2px #000",
                           }}
                         >
-                          {ev.isHeal ? "+" : "-"}{ev.delta}
+                          {ev.big && !ev.isHeal ? "💥" : ""}{ev.isHeal ? "+" : "−"}{ev.delta}
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -634,14 +700,24 @@ function CombatScreenContent() {
                       }}
                       sx={{
                         cursor: canAct && selectedPresetId && (p.character.id !== activeCharacter.id || isHealPreset) ? "pointer" : isMaster ? "grab" : "default",
-                        backgroundColor: isTarget
+                        backgroundColor: hitFx ? "rgba(239,68,68,0.16)"
+                          : isTarget
                           ? (isHealPreset ? "rgba(74,222,128,0.15)" : "rgba(239,83,80,0.15)")
                           : (isHealPreset && p.character.id === activeCharacter.id && canAct ? "rgba(74,222,128,0.05)" : isActive ? "rgba(42,42,85,0.8)" : "rgba(28,28,46,0.6)"),
                         border: isActive ? "2px solid #4fc3f7"
                           : isTarget ? (isHealPreset ? "2px solid #4ade80" : "2px solid #ef5350")
                           : (isHealPreset && p.character.id === activeCharacter.id && canAct ? "1px solid rgba(74,222,128,0.35)" : "1px solid rgba(51,51,51,0.8)"),
                         opacity: p.currentLife <= 0 ? 0.45 : 1,
-                        transition: "background 0.3s, border 0.3s, opacity 0.3s",
+                        boxShadow: hitFx ? "0 0 16px rgba(239,68,68,0.55)" : healFx ? "0 0 16px rgba(74,222,128,0.45)" : undefined,
+                        animation: hitFx ? "combatCardShake 0.45s ease" : undefined,
+                        "@keyframes combatCardShake": {
+                          "0%, 100%": { transform: "translateX(0)" },
+                          "20%": { transform: "translateX(-5px)" },
+                          "40%": { transform: "translateX(5px)" },
+                          "60%": { transform: "translateX(-3px)" },
+                          "80%": { transform: "translateX(3px)" },
+                        },
+                        transition: "background 0.3s, border 0.3s, opacity 0.3s, box-shadow 0.3s",
                       }}
                     >
                       <CardContent sx={{ pb: "12px !important", px: 1.5 }}>
@@ -689,6 +765,19 @@ function CombatScreenContent() {
                         ) : (
                           <Box mt={0.75} sx={{ px: 1.5, py: 0.4, borderRadius: 1, bgcolor: tier.bgColor, border: `1px solid ${tier.color}40`, display: "inline-block" }}>
                             <Typography fontSize={11} color={tier.color} fontWeight={600}>{tier.label}</Typography>
+                          </Box>
+                        )}
+
+                        {/* Sanidade — só o mestre vê (a API já oculta o campo pra jogadores) */}
+                        {isMaster && p.character.sanity != null && (
+                          <Box
+                            onClick={(e) => { e.stopPropagation(); setSanityEditParticipant(p); setSanityEditValue(p.character.sanity); setSanityEditOpen(true); }}
+                            sx={{ display: "inline-flex", alignItems: "center", gap: 0.4, mt: 0.5, px: 0.75, py: 0.15, borderRadius: 1, bgcolor: "rgba(192,132,252,0.12)", border: "1px solid rgba(192,132,252,0.35)", cursor: "pointer" }}
+                          >
+                            <Typography fontSize={10} lineHeight={1}>🧠</Typography>
+                            <Typography fontSize={11} color="#c084fc" fontWeight={700} lineHeight={1}>
+                              {p.character.sanity}{p.character.maxSanity != null ? ` / ${p.character.maxSanity}` : ""}
+                            </Typography>
                           </Box>
                         )}
 
@@ -775,7 +864,7 @@ function CombatScreenContent() {
               const presetIsAoe = !!(preset.isAreaEffect) || preset.targetType === "MULTIPLE";
               const isArmed = selectedPresetId === preset.id;
               const presetIsHeal = preset.type === "HEAL" || preset.type === "SUPPORT";
-              if (["TEST", "SKILL", "REACT"].includes(preset.type)) return null;
+              if (["TEST", "REACT"].includes(preset.type)) return null;
 
               return (
                 <Tooltip
@@ -930,10 +1019,10 @@ function CombatScreenContent() {
                 </Box>
               )}
 
-              {(pendingReactionRoll?.currentReactionTarget?.baseDefense ?? 0) > 0 && (
+              {reactionTargetDefense > 0 && (
                 <Box sx={{ textAlign: "center", px: 2, py: 1.25, borderRadius: 1.5, backgroundColor: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.25)", minWidth: 80 }}>
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>Sua Defesa</Typography>
-                  <Typography variant="h5" color="#60a5fa" fontWeight={800} lineHeight={1}>{pendingReactionRoll!.currentReactionTarget.baseDefense}</Typography>
+                  <Typography variant="h5" color="#60a5fa" fontWeight={800} lineHeight={1}>{reactionTargetDefense}</Typography>
                 </Box>
               )}
             </Stack>
@@ -1012,6 +1101,69 @@ function CombatScreenContent() {
         <DialogActions>
           <Button onClick={() => setHpEditOpen(false)} color="inherit">Cancelar</Button>
           <Button variant="contained" onClick={submitHpEdit}>Confirmar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* AJUSTE MANUAL DE SANIDADE (mestre) */}
+      <Dialog open={sanityEditOpen} onClose={() => setSanityEditOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Ajustar Sanidade — {sanityEditParticipant?.character?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <Typography fontSize={13} color="#aaa">
+              Sanidade atual: {sanityEditParticipant?.character?.sanity}
+              {sanityEditParticipant?.character?.maxSanity != null ? ` / ${sanityEditParticipant.character.maxSanity}` : ""}
+            </Typography>
+            <TextField label="Nova sanidade" type="number" value={sanityEditValue} onChange={(e) => setSanityEditValue(Number(e.target.value))} inputProps={{ min: 0, max: sanityEditParticipant?.character?.maxSanity ?? 9999 }} fullWidth autoFocus />
+            <Typography fontSize={11} color="text.secondary">Visível apenas para o mestre — o jogador nunca vê este valor.</Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSanityEditOpen(false)} color="inherit">Cancelar</Button>
+          <Button variant="contained" onClick={submitSanityEdit}>Confirmar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ESCOLHA DE EFEITO (habilidade com múltiplos efeitos configuráveis) */}
+      <Dialog open={!!effectSelectionRequest} onClose={cancelEffectSelection} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {effectSelectionRequest?.mode === "CHOOSE_ANY" ? "Escolha um ou mais efeitos" : "Escolha um efeito"}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={1} mt={1}>
+            {effectSelectionRequest?.effects.map((eff) => {
+              const isChecked = chosenEffectIds.includes(eff.id);
+              const isRadio = effectSelectionRequest.mode === "CHOOSE_ONE";
+              return (
+                <Box
+                  key={eff.id}
+                  onClick={() => {
+                    if (isRadio) setChosenEffectIds([eff.id]);
+                    else setChosenEffectIds((prev) => isChecked ? prev.filter((id) => id !== eff.id) : [...prev, eff.id]);
+                  }}
+                  sx={{
+                    p: 1.25, borderRadius: 1, cursor: "pointer",
+                    border: isChecked ? "2px solid #8B9DFF" : "1px solid rgba(255,255,255,0.15)",
+                    bgcolor: isChecked ? "rgba(139,157,255,0.1)" : "transparent",
+                  }}
+                >
+                  <Typography fontSize={14} fontWeight={600}>{eff.name}</Typography>
+                  {eff.description && (
+                    <Typography fontSize={12} color="text.secondary">{eff.description}</Typography>
+                  )}
+                </Box>
+              );
+            })}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelEffectSelection} color="inherit">Cancelar</Button>
+          <Button
+            variant="contained"
+            disabled={chosenEffectIds.length === 0}
+            onClick={() => confirmEffectSelection(chosenEffectIds)}
+          >
+            Confirmar
+          </Button>
         </DialogActions>
       </Dialog>
 

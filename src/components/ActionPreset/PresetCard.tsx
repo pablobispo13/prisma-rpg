@@ -198,7 +198,7 @@ export function PresetCard({
                     <Typography variant="caption" color="text.secondary">
                       Descrição:
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
                       {preset.description}
                     </Typography>
                   </Box>

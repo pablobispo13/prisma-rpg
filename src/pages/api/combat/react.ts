@@ -250,7 +250,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     let counterDamage = 0;
 
     if (reactionType === "COUNTER_ATTACK") {
-        reactionSuccess = reactionRollData.total >= attackRoll.total;
+        reactionSuccess = reactionTotal >= attackRoll.total;
 
         if (reactionSuccess) {
             if (!preset.impactFormula) {
@@ -258,7 +258,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             }
             const impactRoll = rollDice(preset.impactFormula);
             counterDamage = impactRoll.total + (target.strength || 0);
-            finalMessage = `${target.name} contra-atacou com sucesso (${reactionRollData.total} vs ${attackRoll.total}) e causou ${counterDamage} de dano em ${attacker.name}`;
+            finalMessage = `${target.name} contra-atacou com sucesso (${reactionTotal} vs ${attackRoll.total}) e causou ${counterDamage} de dano em ${attacker.name}`;
         } else {
             finalMessage = `${target.name} falhou no contra-ataque (${reactionTotal} vs ${attackRoll.total}) e sofreu ${damage} de dano`;
         }

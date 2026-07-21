@@ -14,6 +14,8 @@ import {
 } from "@mui/material";
 import { Character } from "../../types/types";
 import EditIcon from "@mui/icons-material/Edit";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import ShieldIcon from "@mui/icons-material/Shield";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import { deepOrange } from "@mui/material/colors";
@@ -28,6 +30,8 @@ type Props = {
   character: Character;
   loading?: boolean;
   onEditAction?: () => void;
+  onHistoryAction?: () => void;
+  onNotesAction?: () => void;
   canSwitchForm?: boolean;
   onFormSwitched?: () => void;
 };
@@ -36,6 +40,8 @@ export function CharacterHeaderCard({
   character,
   loading = false,
   onEditAction,
+  onHistoryAction,
+  onNotesAction,
   canSwitchForm = false,
   onFormSwitched,
 }: Props) {
@@ -146,20 +152,49 @@ export function CharacterHeaderCard({
               </Stack>
             </Stack>
 
-            {/* Editar Button */}
-            {onEditAction && !loading && (
-              <Button
-                size="small"
-                startIcon={<EditIcon />}
-                onClick={onEditAction}
-                sx={{
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                  fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                }}
-              >
-                Editar
-              </Button>
+            {/* Ações do cabeçalho */}
+            {!loading && (
+              <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+                {onHistoryAction && (
+                  <Button
+                    size="small"
+                    startIcon={<MenuBookIcon />}
+                    onClick={onHistoryAction}
+                    sx={{
+                      whiteSpace: "nowrap",
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
+                    História
+                  </Button>
+                )}
+                {onNotesAction && (
+                  <Button
+                    size="small"
+                    startIcon={<StickyNote2Icon />}
+                    onClick={onNotesAction}
+                    sx={{
+                      whiteSpace: "nowrap",
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
+                    Anotações
+                  </Button>
+                )}
+                {onEditAction && (
+                  <Button
+                    size="small"
+                    startIcon={<EditIcon />}
+                    onClick={onEditAction}
+                    sx={{
+                      whiteSpace: "nowrap",
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
+                    Editar
+                  </Button>
+                )}
+              </Stack>
             )}
           </Stack>
 
@@ -227,9 +262,12 @@ export function CharacterHeaderCard({
             />
           </Stack>
 
-          {/* Descrição (se houver) */}
+          {/* Descrição (se houver) — clique abre a modal completa */}
           {character.history && !loading && (
-            <Box>
+            <Box
+              onClick={onHistoryAction}
+              sx={{ cursor: onHistoryAction ? "pointer" : "default" }}
+            >
               <Typography
                 variant="caption"
                 color="text.secondary"
@@ -253,7 +291,10 @@ export function CharacterHeaderCard({
             </Box>
           )}
           {character.notes && !loading && (
-            <Box>
+            <Box
+              onClick={onNotesAction}
+              sx={{ cursor: onNotesAction ? "pointer" : "default" }}
+            >
               <Typography
                 variant="caption"
                 color="text.secondary"

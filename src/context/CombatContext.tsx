@@ -18,6 +18,15 @@ export type CombatStats = {
     participants: { id: string; name: string; totalDamage: number; hits: number; misses: number; maxHit: number }[];
 };
 
+export type EffectSelectionRequest = {
+    presetId: string;
+    targetIds: string[];
+    characterId: string;
+    presetType?: string;
+    mode: "CHOOSE_ONE" | "CHOOSE_ANY";
+    effects: { id: string; name: string; description?: string | null }[];
+};
+
 export type CombatContextType = {
     combat: any | null;
     isMaster: boolean;
@@ -40,6 +49,9 @@ export type CombatContextType = {
         characterId: string;
         presetType?: string;
     }) => Promise<void>;
+    effectSelectionRequest: EffectSelectionRequest | null;
+    confirmEffectSelection: (selectedEffectIds: string[]) => Promise<void>;
+    cancelEffectSelection: () => void;
     startCombat: (participantIds: string[]) => Promise<void>;
     startTurn: (combatId?: string) => Promise<void>;
     endTurn: () => Promise<void>;
@@ -73,6 +85,7 @@ export function CombatProvider({
     const [pendingReactionRoll, setPendingReactionRoll] = useState<any | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [combatStats, setCombatStats] = useState<CombatStats | null>(null);
+    const [effectSelectionRequest, setEffectSelectionRequest] = useState<EffectSelectionRequest | null>(null);
 
     function clearStats() {
         setCombatStats(null);
@@ -267,33 +280,22 @@ export function CombatProvider({
         setSelectedTargets([]);
     }
 
-    async function useMainAction({
-        presetId,
-        targetIds,
-        characterId,
-        presetType,
-    }: {
-        presetId: string;
-        targetIds: string[];
-        characterId: string;
-        presetType?: string;
-    }) {
-        if (!combat || !isMyTurn) return;
-        if (pendingReactionRoll) return;
-
-        // Ataques consomem "slots" da rodada; demais ações seguem a regra clássica de 1 por turno
-        const isAttack = presetType === "ATTACK";
-        if (isAttack) {
-            if (attacksLeft <= 0) return;
-        } else {
-            if (actionUsed || optimisticActionRef.current) return;
-        }
-
+    async function performRoll(
+        {
+            presetId,
+            targetIds,
+            characterId,
+            presetType,
+        }: { presetId: string; targetIds: string[]; characterId: string; presetType?: string },
+        selectedEffectIds?: string[],
+    ) {
         const turnId = activeTurnIdRef.current ?? activeTurn?.id;
         if (!turnId) {
             toast.error("ID do turno não disponível. Recarregue e tente novamente.");
             return;
         }
+
+        const isAttack = presetType === "ATTACK";
 
         try {
             if (isAttack) {
@@ -310,6 +312,7 @@ export function CombatProvider({
                 turnId,
                 targetIds,
                 characterId,
+                ...(selectedEffectIds ? { selectedEffectIds } : {}),
             });
 
             setSelectedTargets([]);
@@ -323,10 +326,55 @@ export function CombatProvider({
                 optimisticActionRef.current = false;
                 setActionUsed(false);
             }
+
+            const axiosErr = err as AxiosError<{ code?: string; mode?: "CHOOSE_ONE" | "CHOOSE_ANY"; effects?: EffectSelectionRequest["effects"] }>;
+            if (axiosErr?.response?.status === 400 && axiosErr.response.data?.code === "EFFECT_SELECTION_REQUIRED") {
+                setEffectSelectionRequest({
+                    presetId,
+                    targetIds,
+                    characterId,
+                    presetType,
+                    mode: axiosErr.response.data.mode ?? "CHOOSE_ONE",
+                    effects: axiosErr.response.data.effects ?? [],
+                });
+                return;
+            }
+
             toast.error(apiErrorMessage(err, "Erro ao usar ação"));
         } finally {
             setIsLoading(false);
         }
+    }
+
+    async function useMainAction(payload: {
+        presetId: string;
+        targetIds: string[];
+        characterId: string;
+        presetType?: string;
+    }) {
+        if (!combat || !isMyTurn) return;
+        if (pendingReactionRoll) return;
+
+        // Ataques consomem "slots" da rodada; demais ações seguem a regra clássica de 1 por turno
+        const isAttack = payload.presetType === "ATTACK";
+        if (isAttack) {
+            if (attacksLeft <= 0) return;
+        } else {
+            if (actionUsed || optimisticActionRef.current) return;
+        }
+
+        await performRoll(payload);
+    }
+
+    async function confirmEffectSelection(selectedEffectIds: string[]) {
+        if (!effectSelectionRequest) return;
+        const request = effectSelectionRequest;
+        setEffectSelectionRequest(null);
+        await performRoll(request, selectedEffectIds);
+    }
+
+    function cancelEffectSelection() {
+        setEffectSelectionRequest(null);
     }
 
     async function startCombat(participantIds: string[]) {
@@ -481,6 +529,9 @@ export function CombatProvider({
                 selectTarget,
                 clearTargets,
                 useMainAction,
+                effectSelectionRequest,
+                confirmEffectSelection,
+                cancelEffectSelection,
                 startCombat,
                 startTurn,
                 endTurn,

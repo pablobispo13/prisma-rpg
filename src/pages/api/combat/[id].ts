@@ -1,8 +1,7 @@
 import type { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { RollResult } from "@prisma/client";
-import { getCampaignAccess } from "../../../lib/campaignAccess";
+import { getCampaignAccess, hideCharacterSanity } from "../../../lib/campaignAccess";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     const { id } = req.query;
@@ -60,14 +59,37 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             return;
         }
 
-        const rollResultsWithTargets = combat.rollResults.map((roll: RollResult) => {
+        const rollResultsWithTargets = combat.rollResults.map((roll) => {
             const targets = roll.targetIds.map((tid: string) => {
-                return combat.participants.find((p: any) => p.character.id === tid)?.character || null;/* eslint-disable  @typescript-eslint/no-explicit-any */
+                const found = combat.participants.find((p) => p.character.id === tid)?.character || null;
+                return found ? hideCharacterSanity(found, access.isMaster) : null;
             });
-            return { ...roll, targets };
+            return { ...roll, targets, character: hideCharacterSanity(roll.character, access.isMaster) };
         });
 
-        res.status(200).json({ ...combat, rollResults: rollResultsWithTargets });
+        // Logs marcados como masterOnly (ex: ajuste manual de HP) não vão para jogadores
+        const visibleLogs = access.isMaster
+            ? combat.logs
+            : combat.logs.filter((l) => l.masterOnly !== true);
+
+        // Sanidade é exclusiva do mestre: some das fichas dos participantes
+        // (e do character embutido em cada log) para jogadores
+        const visibleParticipants = combat.participants.map((p) => ({
+            ...p,
+            character: hideCharacterSanity(p.character, access.isMaster),
+        }));
+        const visibleLogsClean = visibleLogs.map((l) => ({
+            ...l,
+            character: l.character ? hideCharacterSanity(l.character, access.isMaster) : l.character,
+            target: l.target ? hideCharacterSanity(l.target, access.isMaster) : l.target,
+        }));
+
+        res.status(200).json({
+            ...combat,
+            participants: visibleParticipants,
+            logs: visibleLogsClean,
+            rollResults: rollResultsWithTargets,
+        });
         return;
     }
 

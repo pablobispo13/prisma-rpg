@@ -1,6 +1,7 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
+import { hideCharacterSanity } from "../../../lib/campaignAccess";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   const { id } = req.query;
@@ -37,6 +38,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     return;
   }
 
+  // Sanidade é exclusiva do mestre — jogadores (mesmo donos da ficha) não veem
+  const requesterIsMaster = user.isAdmin || character.campaign.masterId === user.userId;
+
   // DETALHE
   if (req.method === "GET") {
     // Metadados do grupo de formas (mesmo shape da listagem), tanto para a
@@ -64,7 +68,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           }
         : null;
 
-    res.status(200).json({ ...character, formGroup });
+    res.status(200).json(hideCharacterSanity({ ...character, formGroup }, requesterIsMaster));
     return;
   }
 
@@ -90,22 +94,35 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       maxReactionsPerRound,
       maxAttacksPerRound,
       maxTransformationsPerRound,
+      sanity,
+      maxSanity,
+      abilitySanityCostOverride,
     } = req.body;
 
-    // image só pode ser alterada por admin (curadoria centralizada)
-    const allowImage = user.isAdmin;
+    // image pode ser alterada pelo admin ou pelo mestre da mesa deste personagem
+    const allowImage = requesterIsMaster;
     if (!allowImage && image !== undefined && image !== character.image) {
-      // não-admin enviou image diferente: ignora silenciosamente
+      // sem permissão e enviou image diferente: ignora silenciosamente
     }
 
-    // Overrides de limites por rodada: apenas mestre da mesa ou admin,
-    // senão o jogador poderia se dar ataques/reações extras
-    const allowLimitOverrides = user.isAdmin || character.campaign.masterId === user.userId;
+    // Overrides de limites por rodada e sanidade: apenas mestre da mesa ou
+    // admin, senão o jogador poderia se dar ataques/reações extras ou
+    // adulterar a própria sanidade
+    const allowLimitOverrides = requesterIsMaster;
     const normalizeLimit = (value: unknown): number | null | undefined => {
       if (value === undefined) return undefined; // não altera
       if (value === null || value === "") return null; // volta a usar o da mesa
       const n = Number(value);
       if (!Number.isInteger(n) || n < 0 || n > 20) return undefined;
+      return n;
+    };
+    // Sanidade não tem teto de 20 como os limites de rodada (é um recurso
+    // tipo vida, não um contador por turno)
+    const normalizeSanity = (value: unknown): number | null | undefined => {
+      if (value === undefined) return undefined;
+      if (value === null || value === "") return null; // não rastreada
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0) return undefined;
       return n;
     };
 
@@ -130,6 +147,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
               maxReactionsPerRound: normalizeLimit(maxReactionsPerRound),
               maxAttacksPerRound: normalizeLimit(maxAttacksPerRound),
               maxTransformationsPerRound: normalizeLimit(maxTransformationsPerRound),
+              sanity: normalizeSanity(sanity),
+              maxSanity: normalizeSanity(maxSanity),
+              abilitySanityCostOverride: normalizeSanity(abilitySanityCostOverride),
             }
           : {}),
         dodgePresetId,
@@ -149,7 +169,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       },
     });
 
-    res.status(200).json(updated);
+    res.status(200).json(hideCharacterSanity(updated, requesterIsMaster));
     return;
   }
 

@@ -15,7 +15,7 @@ type Props = {
 };
 
 /**
- * Grid de seleção de imagens. Visível apenas para o admin.
+ * Grid de seleção de imagens. Visível para o admin e para o mestre da mesa.
  * Lista imagens locais (public/characters/) e do Cloudinary (pasta prisma-rpg)
  * via /api/admin/images, e permite subir novas direto pra pasta do Cloudinary.
  */
@@ -69,7 +69,7 @@ export function ImagePicker({ value, onChange }: Props) {
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
         <Typography variant="caption" color="text.secondary">
-          Escolha uma imagem da biblioteca (admin)
+          Escolha uma imagem da biblioteca
         </Typography>
         <Button
           size="small"

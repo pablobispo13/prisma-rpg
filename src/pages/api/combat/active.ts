@@ -2,6 +2,7 @@
 import type { NextApiResponse } from "next";
 import { withCampaign, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
+import { hideCharacterSanity } from "../../../lib/campaignAccess";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (req.method !== "GET") {
@@ -34,7 +35,15 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 },
             });
 
-    return res.status(200).json(combats);
+    const sanitized = combats.map((c) => ({
+        ...c,
+        participants: c.participants.map((p) => ({
+            ...p,
+            character: hideCharacterSanity(p.character, isMaster),
+        })),
+    }));
+
+    return res.status(200).json(sanitized);
 }
 
 export default withCampaign(handler);

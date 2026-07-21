@@ -1,6 +1,7 @@
 import type { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { cloudinary, CLOUD_FOLDER, USE_CLOUDINARY } from "../../../lib/cloudinary";
+import { prisma } from "../../../lib/prisma";
 import fs from "fs";
 import path from "path";
 
@@ -35,7 +36,9 @@ async function listCloudinaryImages(): Promise<string[]> {
 }
 
 /**
- * Biblioteca de imagens de personagem. Apenas usuários com isAdmin.
+ * Biblioteca de imagens de personagem. Admin sempre; mestre de mesa apenas
+ * quando a requisição chega com a mesa ativa (header x-campaign-id, enviado
+ * automaticamente pelo front sempre que há uma mesa selecionada).
  *
  * GET  — lista as imagens: locais (public/characters/, nome do arquivo) +
  *        Cloudinary (pasta prisma-rpg, URL completa).
@@ -43,8 +46,23 @@ async function listCloudinaryImages(): Promise<string[]> {
  *        no Cloudinary; sem CLOUDINARY_URL configurado, salva localmente (dev).
  */
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
-  if (!req.user?.isAdmin) {
-    res.status(403).json({ message: "Apenas o admin pode gerenciar imagens" });
+  const user = req.user!;
+  let allowed = !!user.isAdmin;
+
+  if (!allowed) {
+    const headerId = req.headers["x-campaign-id"];
+    const campaignId = typeof headerId === "string" ? headerId : null;
+    if (campaignId) {
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { masterId: true },
+      });
+      allowed = campaign?.masterId === user.userId;
+    }
+  }
+
+  if (!allowed) {
+    res.status(403).json({ message: "Apenas o mestre da mesa ou o admin podem gerenciar imagens" });
     return;
   }
 

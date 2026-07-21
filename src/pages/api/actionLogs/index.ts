@@ -21,8 +21,18 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             return;
         }
 
+        // Ajustes manuais do mestre (masterOnly) só aparecem para o próprio mestre
+        const charForLogs = await prisma.character.findUnique({
+            where: { id: characterId },
+            select: { campaign: { select: { masterId: true } } },
+        });
+        const isMasterOfChar = charForLogs?.campaign.masterId === user.userId;
+
         const actionLogs = await prisma.actionLog.findMany({
-            where: { characterId },
+            where: {
+                characterId,
+                ...(isMasterOfChar ? {} : { NOT: { masterOnly: true } }),
+            },
             take: 10,
             orderBy: { createdAt: "desc" },
             include: {

@@ -43,7 +43,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
-    const { name, description, image, archived, defenseFormula, maxLifeFormula, reactionsPerRound, characterImageColor } = req.body ?? {};
+    const { name, description, image, archived, defenseFormula, maxLifeFormula, reactionsPerRound, characterImageColor, abilitySanityCost } = req.body ?? {};
     const data: Record<string, unknown> = {};
     if (typeof name === "string" && name.trim()) data.name = name.trim();
     if (typeof description === "string") data.description = description;
@@ -84,6 +84,22 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           return;
         }
         data.reactionsPerRound = n;
+      }
+    }
+
+    // Custo de sanidade automático por uso de habilidade (qualquer preset).
+    // null/vazio = sem custo automático. Configurável só pelo mestre — esta
+    // rota inteira já exige access.isMaster (checado no topo do handler).
+    if (abilitySanityCost !== undefined) {
+      if (abilitySanityCost === null || abilitySanityCost === "") {
+        data.abilitySanityCost = null;
+      } else {
+        const n = Number(abilitySanityCost);
+        if (!Number.isInteger(n) || n < 0) {
+          res.status(400).json({ message: "abilitySanityCost deve ser um inteiro >= 0 (ou vazio para nenhum)" });
+          return;
+        }
+        data.abilitySanityCost = n;
       }
     }
 

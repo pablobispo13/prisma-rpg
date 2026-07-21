@@ -22,7 +22,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
   const source = await prisma.character.findUnique({
     where: { id },
-    include: { presets: true, campaign: { select: { masterId: true } }, forms: { select: { id: true } } },
+    include: {
+      presets: { include: { effects: { orderBy: { sortOrder: "asc" } } } },
+      campaign: { select: { masterId: true } },
+      forms: { select: { id: true } },
+    },
   });
   if (!source) {
     res.status(404).json({ message: "Personagem não encontrado" });
@@ -94,8 +98,33 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             durationTurns: p.durationTurns,
             statAffected: p.statAffected,
             effectAmount: p.effectAmount,
+            effectType: p.effectType,
             statusApplied: p.statusApplied,
+            resolution: p.resolution,
+            contestAttribute: p.contestAttribute,
+            effectSelectionMode: p.effectSelectionMode,
+            usesPerDay: p.usesPerDay,
             characterId: newForm.id,
+            ...(p.effects.length > 0
+              ? {
+                  effects: {
+                    create: p.effects.map((e) => ({
+                      name: e.name,
+                      description: e.description,
+                      effectType: e.effectType,
+                      target: e.target,
+                      value: e.value,
+                      valueFormula: e.valueFormula,
+                      statAffected: e.statAffected,
+                      statusApplied: e.statusApplied,
+                      durationTurns: e.durationTurns,
+                      retestEachRound: e.retestEachRound,
+                      contestDecay: e.contestDecay,
+                      sortOrder: e.sortOrder,
+                    })),
+                  },
+                }
+              : {}),
           },
         });
         presetIdMap[p.id] = newPreset.id;

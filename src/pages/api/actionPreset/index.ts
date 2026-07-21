@@ -1,8 +1,56 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { ActionType, AttributeType, EffectType, TargetType } from "@prisma/client";
+import { ActionType, AttributeType, EffectType, TargetType, ResolutionType, EffectSelectionMode, EffectTarget, StatusType } from "@prisma/client";
 import { canActOnCharacter } from "../../../lib/campaignAccess";
+
+// Normaliza as linhas de efeito recebidas do front para o formato do banco
+export function sanitizePresetEffects(effects: unknown): Array<{
+  name: string;
+  description: string | null;
+  effectType: EffectType;
+  target: EffectTarget;
+  value: number | null;
+  valueFormula: string | null;
+  statAffected: AttributeType | null;
+  statusApplied: StatusType | null;
+  durationTurns: number | null;
+  retestEachRound: boolean;
+  contestDecay: number | null;
+  sortOrder: number;
+}> | null {
+  if (!Array.isArray(effects)) return null;
+  return effects.map((e: any, index: number) => {/* eslint-disable-line @typescript-eslint/no-explicit-any */
+    if (!e?.name || !e?.effectType) {
+      throw new Error("Cada efeito precisa de name e effectType");
+    }
+    return {
+      name: String(e.name),
+      description: e.description ? String(e.description) : null,
+      effectType: e.effectType as EffectType,
+      target: (e.target as EffectTarget) ?? EffectTarget.TARGETS,
+      value: e.value ?? null,
+      valueFormula: e.valueFormula ? String(e.valueFormula) : null,
+      statAffected: (e.statAffected as AttributeType) ?? null,
+      statusApplied: (e.statusApplied as StatusType) ?? null,
+      durationTurns: e.durationTurns ?? null,
+      retestEachRound: Boolean(e.retestEachRound),
+      contestDecay: e.contestDecay ?? null,
+      sortOrder: e.sortOrder ?? index,
+    };
+  });
+}
+
+// null/"" = ilimitado; senão precisa ser inteiro >= 1
+export function normalizeUsesPerDay(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined; // não altera (PUT parcial)
+  if (value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("usesPerDay deve ser um inteiro >= 1 (ou vazio para ilimitado)");
+  }
+  return n;
+}
 
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
@@ -26,6 +74,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       where: { characterId },
       orderBy: { name: "asc" },
       include: {
+        effects: { orderBy: { sortOrder: "asc" } },
         characterEffects: true,
         dodgeCharacters: true,
         blockCharacters: true,
@@ -64,6 +113,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       effectAmount,
       effectType,
       statusApplied,
+      resolution,
+      contestAttribute,
+      effectSelectionMode,
+      effects,
+      usesPerDay,
     } = req.body;
 
     if (!name || !type || !targetType || !diceFormula || !attribute || !characterId) {
@@ -76,8 +130,31 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
+    let effectRows;
+    try {
+      effectRows = sanitizePresetEffects(effects);
+    } catch (e) {
+      res.status(400).json({ message: (e as Error).message });
+      return;
+    }
+
+    let usesPerDayValue: number | null | undefined;
+    try {
+      usesPerDayValue = normalizeUsesPerDay(usesPerDay);
+    } catch (e) {
+      res.status(400).json({ message: (e as Error).message });
+      return;
+    }
+
     const preset = await prisma.actionPreset.create({
       data: {
+        resolution: resolution ? (resolution as ResolutionType) : undefined,
+        contestAttribute: contestAttribute ? (contestAttribute as AttributeType) : null,
+        effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
+        usesPerDay: usesPerDayValue,
+        ...(effectRows && effectRows.length > 0
+          ? { effects: { create: effectRows } }
+          : {}),
         name,
         description,
         type: type as ActionType,
@@ -101,6 +178,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         statusApplied: statusApplied ?? null,
       },
       include: {
+        effects: { orderBy: { sortOrder: "asc" } },
         characterEffects: true,
         dodgeCharacters: true,
         blockCharacters: true,

@@ -54,6 +54,13 @@ export default function MesasPage() {
   // Cor de destaque da imagem do personagem ("" = padrão do sistema)
   const [editImageColor, setEditImageColor] = useState<string>("");
 
+  // Dia do mundo (usos por dia de habilidades)
+  const [advanceDayLoading, setAdvanceDayLoading] = useState(false);
+  const [jumpToDay, setJumpToDay] = useState<string>("");
+
+  // Custo de sanidade automático por uso de habilidade
+  const [editAbilitySanityCost, setEditAbilitySanityCost] = useState<string>("");
+
   // Admin: atribuir mesa a um mestre ao criar
   type AdminUserOption = {
     id: string;
@@ -211,6 +218,22 @@ export default function MesasPage() {
     });
     setEditReactionsPerRound(c.reactionsPerRound == null ? "" : String(c.reactionsPerRound));
     setEditImageColor(c.characterImageColor ?? "");
+    setEditAbilitySanityCost(c.abilitySanityCost == null ? "" : String(c.abilitySanityCost));
+    setJumpToDay("");
+  };
+
+  const handleAdvanceDay = async (setDay?: number) => {
+    if (!editTarget) return;
+    setAdvanceDayLoading(true);
+    try {
+      const res = await api.post(`/campaigns/${editTarget.id}/advance-day`, setDay != null ? { setDay } : {});
+      const newDay = res.data.worldDay as number;
+      toast.success(`Dia do mundo avançado para ${newDay}`);
+      setEditTarget((prev) => (prev ? { ...prev, worldDay: newDay } : prev));
+      setJumpToDay("");
+      await refresh();
+    } catch {}
+    finally { setAdvanceDayLoading(false); }
   };
 
   const handleEditSave = editForm.handleSubmit(async (values) => {
@@ -222,6 +245,7 @@ export default function MesasPage() {
         maxLifeFormula: values.maxLifeFormula ?? null,
         reactionsPerRound: editReactionsPerRound === "" ? null : Number(editReactionsPerRound),
         characterImageColor: editImageColor === "" ? null : editImageColor,
+        abilitySanityCost: editAbilitySanityCost === "" ? null : Number(editAbilitySanityCost),
       });
       toast.success("Mesa atualizada");
       setEditTarget(null);
@@ -596,6 +620,60 @@ export default function MesasPage() {
               <Typography variant="caption" sx={{ color: "#7a7f95" }}>
                 Exceções individuais (ex: habilidade com reação extra ou segundo ataque) são configuradas na ficha de cada personagem.
               </Typography>
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Dia do mundo
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Habilidades com limite de usos por dia (configurado na ficha) liberam de novo quando você avança o dia. Dia atual: <strong>{editTarget?.worldDay ?? 1}</strong>.
+              </Typography>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outlined"
+                  disabled={advanceDayLoading}
+                  onClick={() => handleAdvanceDay()}
+                >
+                  Avançar 1 dia
+                </Button>
+                <TextField
+                  size="small"
+                  label="Ir para o dia"
+                  type="number"
+                  value={jumpToDay}
+                  onChange={(e) => setJumpToDay(e.target.value)}
+                  sx={{ maxWidth: 140 }}
+                  inputProps={{ min: 1 }}
+                />
+                <Button
+                  type="button"
+                  size="small"
+                  disabled={advanceDayLoading || !jumpToDay}
+                  onClick={() => handleAdvanceDay(Number(jumpToDay))}
+                >
+                  Ir
+                </Button>
+              </Stack>
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Sanidade
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Custo automático de sanidade toda vez que um personagem usa qualquer habilidade — soma com qualquer efeito de sanidade específico configurado na própria habilidade. Vale só pra personagens com sanidade rastreada (configurada na ficha, aba mestre).
+              </Typography>
+              <TextField
+                size="small"
+                label="Sanidade gasta por uso de habilidade"
+                type="number"
+                value={editAbilitySanityCost}
+                onChange={(e) => setEditAbilitySanityCost(e.target.value)}
+                sx={{ maxWidth: 260 }}
+                inputProps={{ min: 0 }}
+                helperText="Vazio = nenhum custo automático"
+              />
 
               <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
               <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>

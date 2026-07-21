@@ -2,7 +2,8 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { ActionType, AttributeType, EffectType, TargetType } from "@prisma/client";
+import { ActionType, AttributeType, EffectType, TargetType, ResolutionType, EffectSelectionMode } from "@prisma/client";
+import { sanitizePresetEffects, normalizeUsesPerDay } from "./index";
 
 
 async function handler(
@@ -44,6 +45,7 @@ async function handler(
     const fullPreset = await prisma.actionPreset.findUnique({
       where: { id },
       include: {
+        effects: { orderBy: { sortOrder: "asc" } },
         characterEffects: true,
         dodgeCharacters: true,
         blockCharacters: true,
@@ -81,11 +83,42 @@ async function handler(
       effectAmount,
       effectType,
       statusApplied,
+      resolution,
+      contestAttribute,
+      effectSelectionMode,
+      effects,
+      usesPerDay,
     } = req.body;
+
+    // `effects` presente = substituição completa das linhas de efeito
+    let effectRows;
+    try {
+      effectRows = sanitizePresetEffects(effects);
+    } catch (e) {
+      res.status(400).json({ message: (e as Error).message });
+      return;
+    }
+
+    let usesPerDayValue: number | null | undefined;
+    try {
+      usesPerDayValue = normalizeUsesPerDay(usesPerDay);
+    } catch (e) {
+      res.status(400).json({ message: (e as Error).message });
+      return;
+    }
+
+    if (effectRows) {
+      await prisma.presetEffect.deleteMany({ where: { presetId: id } });
+    }
 
     const updatedPreset = await prisma.actionPreset.update({
       where: { id },
       data: {
+        resolution: resolution ? (resolution as ResolutionType) : undefined,
+        contestAttribute: contestAttribute !== undefined ? (contestAttribute as AttributeType | null) : undefined,
+        effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
+        usesPerDay: usesPerDayValue,
+        ...(effectRows ? { effects: { create: effectRows } } : {}),
         name: name ?? undefined,
         description: description ?? undefined,
         type: type ? (type as ActionType) : undefined,
@@ -108,6 +141,7 @@ async function handler(
         statusApplied: statusApplied ?? undefined,
       },
       include: {
+        effects: { orderBy: { sortOrder: "asc" } },
         characterEffects: true,
         dodgeCharacters: true,
         blockCharacters: true,

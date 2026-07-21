@@ -51,6 +51,9 @@ const BLANK = {
   maxReactionsPerRound: "" as string | number,
   maxAttacksPerRound: "" as string | number,
   maxTransformationsPerRound: "" as string | number,
+  sanity: "" as string | number,
+  maxSanity: "" as string | number,
+  abilitySanityCostOverride: "" as string | number,
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -91,6 +94,9 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         maxReactionsPerRound: character.maxReactionsPerRound ?? "",
         maxAttacksPerRound: character.maxAttacksPerRound ?? "",
         maxTransformationsPerRound: character.maxTransformationsPerRound ?? "",
+        sanity: character.sanity ?? "",
+        maxSanity: character.maxSanity ?? "",
+        abilitySanityCostOverride: character.abilitySanityCostOverride ?? "",
       });
     }
   }, [character, open]);
@@ -148,6 +154,10 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 form.maxAttacksPerRound === "" ? null : Number(form.maxAttacksPerRound),
               maxTransformationsPerRound:
                 form.maxTransformationsPerRound === "" ? null : Number(form.maxTransformationsPerRound),
+              sanity: form.sanity === "" ? null : Number(form.sanity),
+              maxSanity: form.maxSanity === "" ? null : Number(form.maxSanity),
+              abilitySanityCostOverride:
+                form.abilitySanityCostOverride === "" ? null : Number(form.abilitySanityCostOverride),
             }
           : {}),
       });
@@ -189,8 +199,8 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
             </Stack>
           </Stack>
 
-          {/* Seletor de imagem — apenas para admin */}
-          {isAdmin && (
+          {/* Seletor de imagem — admin ou mestre da mesa */}
+          {isMasterOfTable && (
             <ImagePicker
               value={form.image}
               onChange={(filename) => update("image", filename)}
@@ -362,6 +372,43 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                   ))}
                 </TextField>
               </Stack>
+
+              <Divider />
+              <SectionLabel>Sanidade (só o mestre vê)</SectionLabel>
+              <Typography variant="caption" color="text.secondary">
+                Jogadores nunca veem estes dois campos — em nenhuma tela. Deixe em branco para não rastrear sanidade neste personagem.
+              </Typography>
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Sanidade atual"
+                  type="number"
+                  value={form.sanity}
+                  onChange={(e) => update("sanity", e.target.value)}
+                  fullWidth
+                  inputProps={{ min: 0 }}
+                />
+                <TextField
+                  label="Sanidade máxima"
+                  type="number"
+                  value={form.maxSanity}
+                  onChange={(e) => update("maxSanity", e.target.value)}
+                  fullWidth
+                  inputProps={{ min: 0 }}
+                />
+              </Stack>
+              <TextField
+                label="Custo de sanidade por habilidade (substitui o da mesa)"
+                type="number"
+                value={form.abilitySanityCostOverride}
+                onChange={(e) => update("abilitySanityCostOverride", e.target.value)}
+                fullWidth
+                inputProps={{ min: 0 }}
+                helperText={
+                  activeCampaign?.abilitySanityCost != null
+                    ? `Vazio = usa o da mesa (${activeCampaign.abilitySanityCost})`
+                    : "Vazio = usa o da mesa (sem custo automático configurado)"
+                }
+              />
             </>
           )}
 

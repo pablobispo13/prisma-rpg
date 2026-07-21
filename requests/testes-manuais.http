@@ -1,0 +1,504 @@
+### ============================================================
+### TESTES MANUAIS — Sanidade, Usos por Dia e Habilidades Multi-Efeito
+### ============================================================
+### Como usar:
+### 1. Instale a extensão "REST Client" (humao.rest-client) no VS Code.
+### 2. Rode o servidor: npm run dev
+### 3. Abra este arquivo. Acima de cada bloco "###" aparece um link
+###    "Send Request" — clique nele. A resposta abre num painel ao lado,
+###    dentro do próprio editor (sem precisar de Postman/navegador).
+### 4. Copie os IDs/tokens que cada resposta devolve para as variáveis
+###    @variavel abaixo (Ctrl+clique numa variável não ajuda — é manual
+###    mesmo: copie o valor do JSON de resposta e cole aqui embaixo).
+### 5. Depois de qualquer request que dependa de login, se você mudar
+###    isAdmin/role de um usuário no Prisma Studio, faça login de novo
+###    (o token carrega esses dados "congelados" no momento do login).
+###
+### Dica: com a resposta aberta, clique com o botão direito nela e use
+### "Save Response" se quiser guardar prints/rascunhos de bugs.
+### ============================================================
+
+@baseUrl = http://localhost:3000/api
+
+# Preencha estes após cada etapa (veja instruções em cada seção)
+@mestreToken =
+@jogadorToken =
+@campaignId =
+@inviteCode =
+@controladorId =
+@vitimaId =
+@combatId =
+@turnId =
+@presetTaticaId =
+@efeitoArmaduraId =
+@efeitoMarcaId =
+@presetDominarId =
+@presetRitualId =
+@rollId =
+
+
+### ============================================================
+### PASSO 0 — Contas de teste
+### ============================================================
+
+### 0.1 Registrar o mestre
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "mestre_manual",
+  "email": "mestre.manual@teste.com",
+  "password": "senha123456"
+}
+
+### 0.2 Registrar o jogador
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "jogador_manual",
+  "email": "jogador.manual@teste.com",
+  "password": "senha123456"
+}
+
+### 0.3 IMPORTANTE — promover o mestre a admin (só assim ele cria mesa)
+### O app não tem um botão de "virar admin" (é proposital, evita
+### qualquer um criar mesa). Abra o Prisma Studio numa aba do navegador:
+###   npx prisma studio
+### Vá em User -> ache "mestre_manual" -> edite os campos:
+###   role: MESTRE
+###   isAdmin: true
+### Salve. Isso é "em tela" também — o Prisma Studio é uma UI de tabela.
+
+### 0.4 Login do mestre (refaça DEPOIS de mudar isAdmin no Studio)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "mestre.manual@teste.com",
+  "password": "senha123456"
+}
+
+### 0.5 Login do jogador
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "jogador.manual@teste.com",
+  "password": "senha123456"
+}
+
+### Copie os dois "token" das respostas acima para @mestreToken e @jogadorToken lá em cima.
+
+
+### ============================================================
+### PASSO 1 — Mesa, convite, personagens
+### ============================================================
+
+### 1.1 Mestre cria a mesa (precisa masterId = o próprio id, do JSON do login 0.4 -> user.id)
+POST {{baseUrl}}/campaigns
+Authorization: Bearer {{mestreToken}}
+Content-Type: application/json
+
+{
+  "name": "Mesa de Testes Manuais",
+  "masterId": "COLE_AQUI_O_user.id_DO_LOGIN_0.4"
+}
+
+### Copie o "id" da resposta para @campaignId
+
+### 1.2 Mestre gera um convite
+POST {{baseUrl}}/campaigns/{{campaignId}}/invite
+Authorization: Bearer {{mestreToken}}
+Content-Type: application/json
+
+{}
+
+### Copie o "code" da resposta para @inviteCode
+
+### 1.3 Jogador entra na mesa com o código
+POST {{baseUrl}}/campaigns/join
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "code": "{{inviteCode}}"
+}
+
+### 1.4 Jogador cria o personagem "Controlador" (presence alto p/ testar controle mental)
+POST {{baseUrl}}/characters
+Authorization: Bearer {{jogadorToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "name": "Controlador",
+  "life": 100, "maxLife": 100, "baseDefense": 0,
+  "strength": 0, "agility": 0, "vigor": 0, "intellect": 0, "presence": 30
+}
+
+### Copie o "id" da resposta para @controladorId
+
+### 1.5 Mestre cria o NPC "Vitima"
+POST {{baseUrl}}/characters
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "name": "Vitima",
+  "life": 100, "maxLife": 100, "baseDefense": 10,
+  "strength": 0, "agility": 0, "vigor": 0, "intellect": 0, "presence": 5
+}
+
+### Copie o "id" da resposta para @vitimaId
+
+### A esta altura, abra o navegador em /protected/mesas — a mesa e os dois
+### personagens já aparecem na UI normal do app (isso já está pronto).
+
+
+### ============================================================
+### PASSO 2 — SANIDADE (visão do mestre x jogador)
+### ============================================================
+
+### 2.1 Mestre define a sanidade do Controlador
+PUT {{baseUrl}}/characters/{{controladorId}}
+Authorization: Bearer {{mestreToken}}
+Content-Type: application/json
+
+{
+  "sanity": 50,
+  "maxSanity": 100
+}
+
+### Repare na resposta: "sanity": 50, "maxSanity": 100 aparecem (mestre vê).
+
+### 2.2 Jogador busca a MESMA ficha
+GET {{baseUrl}}/characters/{{controladorId}}
+Authorization: Bearer {{jogadorToken}}
+
+### Repare: NÃO existe "sanity" nem "maxSanity" no JSON de resposta —
+### não é null, as chaves simplesmente não vêm. É assim que fica
+### oculto de qualquer tela que o jogador abrir (ficha, combate, listagem).
+
+### 2.3 Jogador tenta trapacear e setar a própria sanidade
+PUT {{baseUrl}}/characters/{{controladorId}}
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "sanity": 999
+}
+
+### Responde 200 só não muda nada (o campo é ignorado). Confirme no
+### Prisma Studio (tabela Character -> campo sanity) que continua 50.
+
+
+### ============================================================
+### PASSO 3 — HABILIDADE COM 2 CENÁRIOS (CHOOSE_ONE)
+### "Quebrar armadura" OU "Marcar" (+1d6 de dano de qualquer ataque)
+### ============================================================
+
+### 3.1 Criar a habilidade com as duas linhas de efeito
+POST {{baseUrl}}/actionPreset
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "name": "Tática Dupla",
+  "description": "Escolha: quebrar a armadura do alvo OU marcá-lo para dano extra",
+  "type": "SKILL",
+  "targetType": "ENEMY",
+  "diceFormula": "1d20",
+  "attribute": "INTELLECT",
+  "resolution": "AUTO",
+  "effectSelectionMode": "CHOOSE_ONE",
+  "characterId": "{{controladorId}}",
+  "effects": [
+    { "name": "Quebrar Armadura", "description": "-5 de defesa por 2 rodadas", "effectType": "DEFENSE_DEBUFF", "value": 5, "durationTurns": 2 },
+    { "name": "Marca de Caça", "description": "alvo sofre +1d6 de dano de qualquer ataque", "effectType": "DAMAGE_TAKEN_BONUS", "valueFormula": "1d6", "durationTurns": 2 }
+  ]
+}
+
+### Copie o "id" do preset para @presetTaticaId, e o "id" de cada item
+### do array "effects" da resposta para @efeitoArmaduraId / @efeitoMarcaId.
+
+### Vá no navegador na ficha do Controlador — a habilidade "Tática Dupla"
+### já aparece na lista de ações (o PresetCard existente lê qualquer
+### preset, com ou sem multi-efeito). Só não existe ainda o botão/modal
+### para ESCOLHER entre os dois efeitos — por isso os próximos passos
+### continuam por aqui.
+
+### 3.2 Iniciar um combate para poder rolar a habilidade
+POST {{baseUrl}}/combat/control
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "action": "startCombat",
+  "participantIds": ["{{controladorId}}", "{{vitimaId}}"]
+}
+
+### Copie "combat.id" da resposta para @combatId
+
+### 3.3 Abrir o turno de quem estiver na vez
+POST {{baseUrl}}/combat/control
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "action": "startTurn",
+  "combatId": "{{combatId}}"
+}
+
+### Copie o "id" da resposta para @turnId.
+### A partir daqui, ABRA /protected/combate no navegador também — o
+### combate que você acabou de criar por aqui já aparece lá, ao vivo
+### (o app usa Pusher: qualquer roll feito por este arquivo .http
+### atualiza a tela do navegador sozinha, sem precisar dar F5).
+
+### 3.4 Tentar rolar SEM escolher o efeito (deve dar erro 400 explicando)
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetTaticaId}}",
+  "targetIds": ["{{vitimaId}}"],
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### Resposta 400, code "EFFECT_SELECTION_REQUIRED", e o corpo já lista
+### os dois efeitos com nome/descrição — é exatamente o payload que a
+### futura modal de escolha vai usar para montar os botões.
+
+### 3.5 Rolar escolhendo "Quebrar Armadura"
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetTaticaId}}",
+  "targetIds": ["{{vitimaId}}"],
+  "selectedEffectIds": ["{{efeitoArmaduraId}}"],
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### Confira na tela de combate do navegador: o log "Vitima recebeu
+### efeito Quebrar Armadura por 2 turno(s)" já aparece lá, ao vivo.
+
+### 3.6 Rolar de novo (turno seguinte) escolhendo "Marca de Caça"
+### — reabra o turno (3.3) se precisar de um turnId novo — e então:
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetTaticaId}}",
+  "targetIds": ["{{vitimaId}}"],
+  "selectedEffectIds": ["{{efeitoMarcaId}}"],
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### Depois disso, qualquer ataque comum contra "Vitima" (pela tela do
+### navegador mesmo, usando um ataque já cadastrado) mostra o dano
+### extra no log: "Vitima está marcado e sofre +N de dano".
+
+
+### ============================================================
+### PASSO 4 — CONTROLE MENTAL (teste resistido + reteste)
+### ============================================================
+
+### 4.1 Criar a habilidade de controle
+POST {{baseUrl}}/actionPreset
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "name": "Dominar Mente",
+  "description": "Teste de presença resistido; alvo controlado até vencer o reteste",
+  "type": "SKILL",
+  "targetType": "ENEMY",
+  "diceFormula": "1d20",
+  "attribute": "PRESENCE",
+  "resolution": "CONTESTED",
+  "contestAttribute": "PRESENCE",
+  "characterId": "{{controladorId}}",
+  "effects": [
+    { "name": "Controle Mental", "effectType": "CONTROLLED", "durationTurns": 3, "retestEachRound": true, "contestDecay": 2 }
+  ]
+}
+
+### Copie o "id" do preset para @presetDominarId
+
+### 4.2 Rolar (abra um turno novo do Controlador antes, passo 3.3)
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetDominarId}}",
+  "targetIds": ["{{vitimaId}}"],
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### Na tela de combate: log "Vitima falhou no teste resistido contra
+### Dominar Mente (X vs Y)". Avance os turnos pelo botão normal da UI
+### até voltar a vez da Vitima — no log vai aparecer o reteste
+### ("continua sob Controle Mental" ou "se libertou", com os números).
+
+
+### ============================================================
+### PASSO 5 — USOS POR DIA
+### ============================================================
+
+### 5.1 Limitar "Tática Dupla" a 2 usos por dia
+PUT {{baseUrl}}/actionPreset/{{presetTaticaId}}
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "usesPerDay": 2
+}
+
+### 5.2 Use a habilidade pela tela do navegador (ela já aparece lá) até
+### a 3ª vez no mesmo dia — a 3ª tentativa retorna 400 code
+### "DAILY_LIMIT_REACHED" (hoje isso aparece como toast de erro genérico
+### na UI, já que o botão existente não conhece esse código ainda).
+### Para simular por aqui:
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetTaticaId}}",
+  "targetIds": ["{{vitimaId}}"],
+  "selectedEffectIds": ["{{efeitoArmaduraId}}"],
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### 5.3 Mestre avança o dia do mundo
+POST {{baseUrl}}/campaigns/{{campaignId}}/advance-day
+Authorization: Bearer {{mestreToken}}
+Content-Type: application/json
+
+{}
+
+### Resposta: { "worldDay": 2 }. Repita 5.2 — o limite abre de novo.
+
+### Para ver o histórico de uso "em tela": Prisma Studio -> coleção
+### PresetDailyUsage -> filtre por presetId — cada dia vira uma linha.
+
+
+### ============================================================
+### PASSO 6 — SANITY_DRAIN (custo de usar a habilidade)
+### ============================================================
+
+### 6.1 Criar habilidade que custa sanidade do próprio Controlador
+POST {{baseUrl}}/actionPreset
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "name": "Ritual Sombrio",
+  "description": "Custa 5 de sanidade para conjurar",
+  "type": "SKILL",
+  "targetType": "SELF",
+  "diceFormula": "1d20",
+  "attribute": "PRESENCE",
+  "resolution": "AUTO",
+  "characterId": "{{controladorId}}",
+  "effects": [
+    { "name": "Custo Mental", "effectType": "SANITY_DRAIN", "value": 5, "target": "SELF" }
+  ]
+}
+
+### Copie o "id" para @presetRitualId
+
+### 6.2 Usar a habilidade (jogador não vê nada de diferente na UI)
+POST {{baseUrl}}/roll
+Authorization: Bearer {{jogadorToken}}
+Content-Type: application/json
+
+{
+  "characterId": "{{controladorId}}",
+  "actionPresetId": "{{presetRitualId}}",
+  "combatId": "{{combatId}}",
+  "turnId": "{{turnId}}"
+}
+
+### 6.3 Confirme o desconto como MESTRE (jogador não consegue ver isso em lugar nenhum)
+GET {{baseUrl}}/characters/{{controladorId}}
+Authorization: Bearer {{mestreToken}}
+
+### "sanity" deve ter caído de 50 para 45.
+
+### 6.4 Confira que o log do desconto é invisível pro jogador
+GET {{baseUrl}}/actionLogs?characterId={{controladorId}}
+Authorization: Bearer {{jogadorToken}}
+x-campaign-id: {{campaignId}}
+
+### Não deve aparecer nenhuma linha mencionando sanidade.
+
+GET {{baseUrl}}/actionLogs?characterId={{controladorId}}
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+
+### Aqui SIM aparece: "Controlador perdeu 5 de sanidade por Ritual Sombrio (50 → 45)".
+
+
+### ============================================================
+### PASSO 7 — Ajuste manual de sanidade pelo mestre (sem habilidade)
+### ============================================================
+
+### 7.1 Mestre ajusta na mão (ex: custo de uma cena de horror)
+POST {{baseUrl}}/combat/control
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "action": "adjustSanity",
+  "combatId": "{{combatId}}",
+  "characterId": "{{controladorId}}",
+  "newSanity": 20
+}
+
+### 7.2 Jogador tenta a mesma ação (deve dar 403)
+POST {{baseUrl}}/combat/control
+Authorization: Bearer {{jogadorToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "action": "adjustSanity",
+  "combatId": "{{combatId}}",
+  "characterId": "{{controladorId}}",
+  "newSanity": 100
+}
+
+
+### ============================================================
+### LIMPEZA — encerrar o combate de teste
+### ============================================================
+POST {{baseUrl}}/combat/control
+Authorization: Bearer {{mestreToken}}
+x-campaign-id: {{campaignId}}
+Content-Type: application/json
+
+{
+  "action": "endCombat",
+  "combatId": "{{combatId}}"
+}

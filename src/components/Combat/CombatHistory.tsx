@@ -24,6 +24,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { useCampaign } from "../../context/CampaignContext";
+import { useAuth } from "../../context/AuthContext";
 import { isNpc } from "../../lib/isNpc";
 
 /* ===========================
@@ -98,27 +99,145 @@ const LOG_LABELS: Record<string, string> = {
     TURN_END: "Turno↓",
 };
 
-const CHART_COLORS = [
-    "#4fc3f7", "#4ade80", "#f87171", "#fbbf24",
-    "#a78bfa", "#fb923c", "#34d399", "#f472b6",
-];
+// Jogadores em azul, NPCs em laranja — par validado para CVD sobre fundo escuro
+const TEAM_COLORS = { player: "#3987e5", npc: "#d95926" };
+const DEATH_COLOR = "#e66767";
 
 /* ===========================
-   HP CHART
+   HP CHART — small multiples
+   Um mini-gráfico por personagem, cada um na escala do próprio
+   maxLife. Divisórias verticais marcam a virada de round; ✝ marca
+   a queda a 0 HP; hover mostra round + valor.
 =========================== */
+
+type HpSeries = {
+    id: string;
+    name: string;
+    npc: boolean;
+    color: string;
+    maxLife: number;
+    // HP por snapshot; null = ainda não estava no combate
+    values: (number | null)[];
+    deathIdx: number | null;
+    isDead: boolean;
+    showExact: boolean;
+};
+
+function HpSparkCell({
+    series,
+    snapshots,
+    roundStarts,
+}: {
+    series: HpSeries;
+    snapshots: HpSnapshot[];
+    roundStarts: number[];
+}) {
+    const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+    const W = 100;
+    const H = 34;
+    const n = snapshots.length;
+    const maxLife = Math.max(series.maxLife, 1);
+
+    const xOf = (i: number) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+    const yOf = (hp: number) => 2 + (1 - Math.max(0, Math.min(hp / maxLife, 1))) * (H - 4);
+    const xPct = (i: number) => `${((xOf(i) / W) * 100).toFixed(2)}%`;
+
+    const pts = series.values
+        .map((v, i) => (v == null ? null : { x: xOf(i), y: yOf(v), i }))
+        .filter((p): p is { x: number; y: number; i: number } => p !== null);
+
+    if (!pts.length) return null;
+
+    const lineStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+    const areaPath =
+        `M ${pts[0].x.toFixed(2)},${H} ` +
+        pts.map((p) => `L ${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ") +
+        ` L ${pts[pts.length - 1].x.toFixed(2)},${H} Z`;
+
+    const finalHp = pts[pts.length - 1] ? (series.values[pts[pts.length - 1].i] ?? 0) : 0;
+    const finalPct = Math.round((finalHp / maxLife) * 100);
+    const hoverValue = hoverIdx != null ? series.values[hoverIdx] : null;
+    const hoverRound = hoverIdx != null ? snapshots[hoverIdx]?.round : null;
+
+    function handleMove(e: React.MouseEvent<SVGSVGElement>) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const frac = (e.clientX - rect.left) / Math.max(rect.width, 1);
+        setHoverIdx(Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1)))));
+    }
+
+    const fmtHp = (v: number) =>
+        series.showExact ? `${v}/${series.maxLife} HP` : `${Math.round((v / maxLife) * 100)}%`;
+
+    return (
+        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", opacity: series.isDead ? 0.8 : 1 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={0.5} mb={0.5}>
+                <Stack direction="row" alignItems="center" spacing={0.6} minWidth={0}>
+                    <Box sx={{ width: 7, height: 7, borderRadius: "2px", bgcolor: series.color, flexShrink: 0 }} />
+                    <Typography fontSize={11} fontWeight={600} color="#ccc" noWrap>{series.name}</Typography>
+                </Stack>
+                <Typography fontSize={10} fontWeight={700} color={series.isDead ? DEATH_COLOR : "#999"} flexShrink={0}>
+                    {series.isDead ? "✝ caiu" : series.showExact ? `${finalHp}/${series.maxLife}` : `${finalPct}%`}
+                </Typography>
+            </Stack>
+
+            {/* Altura do SVG = altura do viewBox → só o eixo X estica; marcadores em HTML não distorcem */}
+            <Box sx={{ position: "relative" }}>
+                <svg
+                    width="100%"
+                    height={H}
+                    viewBox={`0 0 ${W} ${H}`}
+                    preserveAspectRatio="none"
+                    style={{ display: "block", cursor: "crosshair" }}
+                    onMouseMove={handleMove}
+                    onMouseLeave={() => setHoverIdx(null)}
+                >
+                    {roundStarts.map((i) => (
+                        <line key={i} x1={xOf(i)} x2={xOf(i)} y1={0} y2={H} stroke="#ffffff12" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    ))}
+                    <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} stroke="#2a2a3a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    <path d={areaPath} fill={series.color} opacity={0.13} />
+                    <polyline points={lineStr} fill="none" stroke={series.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                    {hoverIdx != null && (
+                        <line x1={xOf(hoverIdx)} x2={xOf(hoverIdx)} y1={0} y2={H} stroke="#ffffff40" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    )}
+                </svg>
+
+                {/* Marcador de morte */}
+                {series.deathIdx != null && (
+                    <Box sx={{ position: "absolute", left: xPct(series.deathIdx), top: yOf(0), width: 7, height: 7, borderRadius: "50%", bgcolor: DEATH_COLOR, border: "1.5px solid #14141f", transform: "translate(-50%, -50%)", pointerEvents: "none" }} />
+                )}
+
+                {/* Ponto do hover */}
+                {hoverIdx != null && hoverValue != null && (
+                    <Box sx={{ position: "absolute", left: xPct(hoverIdx), top: yOf(hoverValue), width: 7, height: 7, borderRadius: "50%", bgcolor: series.color, border: "1.5px solid #14141f", transform: "translate(-50%, -50%)", pointerEvents: "none" }} />
+                )}
+
+                {/* Tooltip */}
+                {hoverIdx != null && (
+                    <Box sx={{ position: "absolute", bottom: H + 2, left: "50%", transform: "translateX(-50%)", px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "#0b0b14", border: "1px solid #333", pointerEvents: "none", whiteSpace: "nowrap", zIndex: 5 }}>
+                        <Typography fontSize={10} color="#ddd" sx={{ fontFamily: "monospace" }}>
+                            R{hoverRound} · {hoverValue == null ? "fora do combate" : fmtHp(hoverValue)}
+                        </Typography>
+                    </Box>
+                )}
+            </Box>
+        </Box>
+    );
+}
 
 function HpChart({
     snapshots,
     participants,
-    chartId,
     hideNpcs,
     masterId,
+    viewerIsMaster,
 }: {
     snapshots: HpSnapshot[];
     participants: Participant[];
-    chartId: string;
     hideNpcs: boolean;
     masterId: string | null;
+    viewerIsMaster: boolean;
 }) {
     const visibleParticipants = hideNpcs
         ? participants.filter((p) => !isNpc(p.character, masterId))
@@ -126,119 +245,71 @@ function HpChart({
 
     if (!snapshots.length || !visibleParticipants.length) return null;
 
-    const ML = 36;
-    const MR = 8;
-    const MT = 6;
-    const ROUNDS_H = 20;
-    const LEGEND_ROWS = Math.ceil(visibleParticipants.length / 3);
-    const LEGEND_H = LEGEND_ROWS * 17 + 8;
+    // Índices onde o round vira (divisórias verticais dos mini-gráficos)
+    const roundStarts = snapshots
+        .map((s, i) => (i > 0 && s.round !== snapshots[i - 1].round ? i : -1))
+        .filter((i) => i > 0);
 
-    const CW = 480;
-    const CH = 150;
-    const SVG_W = ML + CW + MR;
-    const SVG_H = MT + CH + ROUNDS_H + LEGEND_H;
+    const series: HpSeries[] = visibleParticipants
+        .map((p) => {
+            const raw = snapshots.map((s) => s.data[p.character.id] as number | undefined);
+            const firstIdx = raw.findIndex((v) => v !== undefined);
+            // Antes de entrar no combate = null; buraco no meio repete o último valor
+            let last: number | null = null;
+            const values = raw.map((v, i) => {
+                if (firstIdx === -1 || i < firstIdx) return null;
+                if (v !== undefined) last = v;
+                return last;
+            });
+            const npc = isNpc(p.character, masterId);
+            const deathIdx = values.findIndex((v) => v != null && v <= 0);
+            const lastValue = [...values].reverse().find((v) => v != null) ?? null;
+            return {
+                id: p.character.id,
+                name: p.character.name,
+                npc,
+                color: npc ? TEAM_COLORS.npc : TEAM_COLORS.player,
+                maxLife: p.character.maxLife,
+                values,
+                deathIdx: deathIdx === -1 ? null : deathIdx,
+                isDead: lastValue != null && lastValue <= 0,
+                showExact: viewerIsMaster || !npc,
+            };
+        })
+        .filter((s) => s.values.some((v) => v != null))
+        .sort((a, b) => Number(a.npc) - Number(b.npc) || a.name.localeCompare(b.name));
 
-    const maxHp = Math.max(...visibleParticipants.map((p) => p.character.maxLife), 1);
-    const baseY = MT + CH;
+    if (!series.length) return null;
 
-    const xOf = (i: number) =>
-        ML + (snapshots.length === 1 ? CW / 2 : (i / (snapshots.length - 1)) * CW);
-    const yOf = (hp: number) =>
-        MT + CH - Math.max(0, Math.min(hp / maxHp, 1)) * CH;
+    const totalRounds = snapshots[snapshots.length - 1]?.round ?? 1;
+    const hasNpcSeries = series.some((s) => s.npc);
+    const hasDeath = series.some((s) => s.deathIdx != null);
 
     return (
         <Box sx={{ mt: 1.5 }}>
-            <Typography fontSize={11} color="#666" mb={0.5}>HP ao longo do combate</Typography>
-            <Box sx={{ overflowX: "auto" }}>
-                <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{ display: "block", minWidth: 280 }}>
-                    <defs>
-                        {visibleParticipants.map((p, i) => {
-                            const color = CHART_COLORS[i % CHART_COLORS.length];
-                            return (
-                                <linearGradient key={p.character.id} id={`hpgrad-${chartId}-${i}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={color} stopOpacity="0.22" />
-                                    <stop offset="100%" stopColor={color} stopOpacity="0.01" />
-                                </linearGradient>
-                            );
-                        })}
-                    </defs>
+            <Stack direction="row" alignItems="center" spacing={1.5} mb={0.75} flexWrap="wrap">
+                <Typography fontSize={11} color="#666" sx={{ flex: 1, minWidth: 140 }}>
+                    HP ao longo do combate · {totalRounds} round(s)
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <Box sx={{ width: 7, height: 7, borderRadius: "2px", bgcolor: TEAM_COLORS.player }} />
+                    <Typography fontSize={10} color="#888">Jogadores</Typography>
+                </Stack>
+                {hasNpcSeries && (
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <Box sx={{ width: 7, height: 7, borderRadius: "2px", bgcolor: TEAM_COLORS.npc }} />
+                        <Typography fontSize={10} color="#888">NPCs</Typography>
+                    </Stack>
+                )}
+                {hasDeath && (
+                    <Typography fontSize={10} color={DEATH_COLOR}>✝ caiu a 0 HP</Typography>
+                )}
+            </Stack>
 
-                    {/* Grid + Y-axis labels */}
-                    {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
-                        const y = MT + CH * (1 - pct);
-                        return (
-                            <g key={pct}>
-                                <line x1={ML} x2={ML + CW} y1={y} y2={y} stroke={pct === 0 ? "#2a2a3a" : "#ffffff08"} strokeWidth={1} />
-                                <text x={ML - 4} y={y} fill="#555" fontSize={8} textAnchor="end" dominantBaseline="middle">
-                                    {Math.round(pct * 100)}%
-                                </text>
-                            </g>
-                        );
-                    })}
-                    <line x1={ML} x2={ML} y1={MT} y2={MT + CH} stroke="#2a2a3a" strokeWidth={1} />
-
-                    {/* Area fills */}
-                    {visibleParticipants.map((p, i) => {
-                        const points = snapshots.map((s, idx) => ({ x: xOf(idx), y: yOf(s.data[p.character.id] ?? 0) }));
-                        if (!points.length) return null;
-                        const areaPath = [
-                            `M ${points[0].x.toFixed(1)},${baseY}`,
-                            ...points.map((pt) => `L ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`),
-                            `L ${points[points.length - 1].x.toFixed(1)},${baseY}`,
-                            "Z",
-                        ].join(" ");
-                        return <path key={`area-${p.character.id}`} d={areaPath} fill={`url(#hpgrad-${chartId}-${i})`} />;
-                    })}
-
-                    {/* Lines + dots */}
-                    {visibleParticipants.map((p, i) => {
-                        const color = CHART_COLORS[i % CHART_COLORS.length];
-                        const points = snapshots.map((s, idx) => ({ x: xOf(idx), y: yOf(s.data[p.character.id] ?? 0) }));
-                        if (!points.length) return null;
-                        const linePts = points.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ");
-                        const last = points[points.length - 1];
-                        return (
-                            <g key={`line-${p.character.id}`}>
-                                <polyline points={linePts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                                <circle cx={last.x} cy={last.y} r={3.5} fill={color} />
-                            </g>
-                        );
-                    })}
-
-                    {/* Round labels */}
-                    {snapshots
-                        .filter((_, i) => {
-                            if (snapshots.length <= 10) return true;
-                            const step = Math.ceil(snapshots.length / 8);
-                            return i % step === 0 || i === snapshots.length - 1;
-                        })
-                        .map((s) => {
-                            const origIdx = snapshots.indexOf(s);
-                            return (
-                                <text key={origIdx} x={xOf(origIdx)} y={MT + CH + 13} fill="#555" fontSize={8} textAnchor="middle">
-                                    R{s.round}
-                                </text>
-                            );
-                        })}
-
-                    {/* Legend */}
-                    {visibleParticipants.map((p, i) => {
-                        const color = CHART_COLORS[i % CHART_COLORS.length];
-                        const COLS = 3;
-                        const col = i % COLS;
-                        const row = Math.floor(i / COLS);
-                        const lx = ML + (CW / COLS) * col;
-                        const ly = MT + CH + ROUNDS_H + 8 + row * 17;
-                        return (
-                            <g key={`legend-${p.character.id}`}>
-                                <rect x={lx} y={ly - 5} width={8} height={8} rx={2} fill={color} opacity={0.85} />
-                                <text x={lx + 12} y={ly} fill="#999" fontSize={9} dominantBaseline="middle">
-                                    {p.character.name}
-                                </text>
-                            </g>
-                        );
-                    })}
-                </svg>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 1 }}>
+                {series.map((s) => (
+                    <HpSparkCell key={s.id} series={s} snapshots={snapshots} roundStarts={roundStarts} />
+                ))}
             </Box>
         </Box>
     );
@@ -306,11 +377,13 @@ function CombatCard({
     hideNpcs,
     onDelete,
     masterId,
+    viewerIsMaster,
 }: {
     combat: CombatSummary;
     hideNpcs: boolean;
     onDelete: (id: string) => void;
     masterId: string | null;
+    viewerIsMaster: boolean;
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
@@ -437,9 +510,9 @@ function CombatCard({
                                 <HpChart
                                     snapshots={combat.hpSnapshots}
                                     participants={combat.participants}
-                                    chartId={combat.id}
                                     hideNpcs={hideNpcs}
                                     masterId={masterId}
+                                    viewerIsMaster={viewerIsMaster}
                                 />
                             )}
 
@@ -545,7 +618,9 @@ export function CombatHistory() {
     const [loading, setLoading] = useState(true);
     const [hideNpcs, setHideNpcs] = useState(false);
     const { activeCampaign } = useCampaign();
+    const { user } = useAuth();
     const masterId = activeCampaign?.masterId ?? null;
+    const viewerIsMaster = !!user?.id && user.id === masterId;
 
     useEffect(() => {
         api.get("/combat/history")
@@ -606,7 +681,7 @@ export function CombatHistory() {
             {/* Combat list */}
             <Stack spacing={1.5}>
                 {combats.map((combat) => (
-                    <CombatCard key={combat.id} combat={combat} hideNpcs={hideNpcs} onDelete={handleDelete} masterId={masterId} />
+                    <CombatCard key={combat.id} combat={combat} hideNpcs={hideNpcs} onDelete={handleDelete} masterId={masterId} viewerIsMaster={viewerIsMaster} />
                 ))}
             </Stack>
         </Stack>

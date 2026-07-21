@@ -69,12 +69,37 @@ enum EffectType {
   DAMAGE_OVER_TIME
   STAT_BUFF
   STAT_DEBUFF
+  DEFENSE_BUFF
+  DEFENSE_DEBUFF
   TEMP_HP
   STUN
   ROLL_BONUS
   ROLL_PENALTY
   ADVANTAGE
   DISADVANTAGE
+  CONTROLLED
+  DAMAGE_TAKEN_BONUS
+  SANITY_DRAIN // desconta Character.sanity (custo de usar a habilidade)
+}
+
+// Como a rolagem do preset é resolvida contra o alvo
+enum ResolutionType {
+  DEFENSE // total do atacante vs defesa efetiva do alvo (padrão)
+  CONTESTED // teste resistido: total vs 1d20 + atributo do alvo
+  AUTO // aplica sem teste (buffs em aliados, efeitos automáticos)
+}
+
+// Como o jogador escolhe entre os efeitos de um preset multi-efeito
+enum EffectSelectionMode {
+  ALL // aplica todos de uma vez (habilidade composta)
+  CHOOSE_ONE // jogador escolhe exatamente 1 (cenários/modos)
+  CHOOSE_ANY // jogador escolhe um subconjunto (mínimo 1)
+}
+
+// Em quem cada PresetEffect é aplicado
+enum EffectTarget {
+  SELF // o conjurador
+  TARGETS // os alvos selecionados na ação
 }
 
 ///////////////////////
@@ -90,9 +115,9 @@ model User {
   isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  characters       Character[]
-  ownedCampaigns   Campaign[]         @relation("CampaignMaster")
-  campaignMembers  CampaignMember[]
+  characters      Character[]
+  ownedCampaigns  Campaign[]       @relation("CampaignMaster")
+  campaignMembers CampaignMember[]
 }
 
 ///////////////////////
@@ -100,12 +125,12 @@ model User {
 ///////////////////////
 
 model Campaign {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   description String?
   image       String?
   streamUrl   String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   archivedAt  DateTime?
 
   // Fórmulas de atributos derivados configuráveis pelo mestre.
@@ -123,13 +148,26 @@ model Campaign {
   // null = cor padrão do sistema (laranja)
   characterImageColor String?
 
+  // Dia atual do mundo da mesa (controlado pelo mestre). null = dia 1.
+  // Avançar o dia (POST /campaigns/[id]/advance-day) libera de novo os usos
+  // diários de habilidades (ActionPreset.usesPerDay).
+  worldDay Int?
+
+  // Custo de sanidade cobrado automaticamente do CONJURADOR em toda
+  // habilidade usada (qualquer ActionPreset, via POST /roll), além de
+  // qualquer PresetEffect SANITY_DRAIN específico daquela habilidade.
+  // null = sem custo automático. Configurável só pelo mestre (PATCH desta
+  // rota já exige access.isMaster). Override por personagem em
+  // Character.abilitySanityCostOverride.
+  abilitySanityCost Int?
+
   masterId String @db.ObjectId
   master   User   @relation("CampaignMaster", fields: [masterId], references: [id])
 
-  members      CampaignMember[]
-  invites      CampaignInvite[]
-  characters   Character[]
-  combats      Combat[]
+  members    CampaignMember[]
+  invites    CampaignInvite[]
+  characters Character[]
+  combats    Combat[]
 }
 
 model CampaignMember {
@@ -152,12 +190,12 @@ model CampaignInvite {
   campaignId String   @db.ObjectId
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 
-  code      String   @unique
-  createdAt DateTime @default(now())
+  code      String    @unique
+  createdAt DateTime  @default(now())
   expiresAt DateTime?
   maxUses   Int?
-  uses      Int      @default(0)
-  active    Boolean  @default(true)
+  uses      Int       @default(0)
+  active    Boolean   @default(true)
 }
 
 ///////////////////////
@@ -177,7 +215,20 @@ model Character {
   intellect Int
   presence  Int
 
-  baseDefense   Int           @default(0)
+  baseDefense Int @default(0)
+
+  // Sanidade — controlada exclusivamente pelo mestre; a API oculta estes
+  // dois campos das respostas para jogadores (ver hideCharacterSanity em
+  // src/lib/campaignAccess.ts). null = sanidade não rastreada neste
+  // personagem. Descontada automaticamente por PresetEffect do tipo
+  // SANITY_DRAIN (ex: custo de usar uma habilidade) ou manualmente pelo
+  // mestre (PUT /characters/[id] ou ação "adjustSanity" em combate).
+  sanity                    Int?
+  maxSanity                 Int?
+  // Override do custo automático de sanidade por habilidade (Campaign.
+  // abilitySanityCost). null = usa o da mesa. Mesma visibilidade restrita
+  // ao mestre que sanity/maxSanity (ver hideCharacterSanity).
+  abilitySanityCostOverride Int?
 
   // Overrides por personagem dos limites da mesa (null = usa o da campanha).
   // Permite habilidades tipo "reage 2x por rodada" ou "ataque extra".
@@ -229,6 +280,7 @@ model Character {
 
   // Status temporários
   statusEffects CharacterEffect[]
+  dailyUsages   PresetDailyUsage[]
 }
 
 ///////////////////////
@@ -260,6 +312,22 @@ model ActionPreset {
 
   attribute AttributeType
 
+  // Resolução da rolagem contra o alvo (DEFENSE = comportamento clássico)
+  resolution       ResolutionType @default(DEFENSE)
+  // Atributo do alvo no teste resistido (null = mesmo atributo do preset)
+  contestAttribute AttributeType?
+
+  // Limite de usos por dia (por personagem). null = ilimitado. O "dia"
+  // é o Campaign.worldDay; o mestre avança o dia e o limite libera de novo.
+  usesPerDay Int?
+
+  // Multi-efeito: quando o preset tem linhas em `effects`, elas substituem os
+  // campos legados abaixo (durationTurns/statAffected/effectAmount/...)
+  effectSelectionMode EffectSelectionMode @default(ALL)
+  effects             PresetEffect[]
+
+  // Campos legados de efeito único (presets antigos; migrados por
+  // scripts/backfill-preset-effects.ts e mantidos como fallback)
   durationTurns Int?
   statAffected  AttributeType?
   effectAmount  Int?
@@ -276,6 +344,65 @@ model ActionPreset {
   rolls            RollResult[]
   inventories      Inventory[]
   characterEffects CharacterEffect[]
+  dailyUsages      PresetDailyUsage[]
+}
+
+///////////////////////
+// PRESET EFFECT (multi-efeito)
+///////////////////////
+
+// Uma linha de efeito configurável de um ActionPreset. Presets podem ter
+// várias; o jogador escolhe quais aplicar conforme effectSelectionMode.
+model PresetEffect {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  presetId String       @db.ObjectId
+  preset   ActionPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  name        String // rótulo mostrado na modal de escolha ("Quebrar armadura")
+  description String?
+
+  effectType    EffectType
+  target        EffectTarget   @default(TARGETS)
+  value         Int?
+  // Fórmula de dado para o valor (ex: "1d6"). DAMAGE_TAKEN_BONUS rola a cada
+  // ataque recebido; demais tipos rolam uma vez na aplicação.
+  valueFormula  String?
+  statAffected  AttributeType?
+  statusApplied StatusType?
+  durationTurns Int?
+
+  // Reteste por rodada (efeitos resistidos, ex: controle mental):
+  // o alvo repete o teste no início do próprio turno contra o total do
+  // conjurador, que decai contestDecay por rodada. Vence = efeito removido.
+  retestEachRound Boolean @default(false)
+  contestDecay    Int?
+
+  sortOrder Int @default(0)
+
+  characterEffects CharacterEffect[]
+}
+
+///////////////////////
+// USO DIÁRIO DE HABILIDADE
+///////////////////////
+
+// Contador de uso de um ActionPreset por personagem, escopado ao worldDay
+// vigente na criação da linha. Cada avanço de dia gera uma linha nova (a
+// anterior fica como histórico) — evita ter que "zerar" contadores.
+model PresetDailyUsage {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  characterId String    @db.ObjectId
+  character   Character @relation(fields: [characterId], references: [id])
+
+  presetId String       @db.ObjectId
+  preset   ActionPreset @relation(fields: [presetId], references: [id])
+
+  worldDay  Int
+  usedCount Int @default(0)
+
+  @@unique([characterId, presetId, worldDay])
 }
 
 ///////////////////////
@@ -313,14 +440,14 @@ model RollResult {
   healing Int?
 
   // Reações
-  pendingReaction Boolean @default(false)
-  reactionType    String?
-  reacted         Boolean @default(false)
-  pendingReactionTargets Json[] @default([])
+  pendingReaction        Boolean @default(false)
+  reactionType           String?
+  reacted                Boolean @default(false)
+  pendingReactionTargets Json[]  @default([])
 
   createdAt DateTime @default(now())
 
-  logs    ActionLog[]      @relation("RollLogs")
+  logs    ActionLog[]        @relation("RollLogs")
   details RollResultDetail[] @relation("RollDetails")
 }
 
@@ -331,7 +458,7 @@ model RollResult {
 model RollResultDetail {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  rollResultId String    @db.ObjectId
+  rollResultId String     @db.ObjectId
   rollResult   RollResult @relation("RollDetails", fields: [rollResultId], references: [id])
 
   targetId String @db.ObjectId
@@ -340,9 +467,9 @@ model RollResultDetail {
   beforeLife Int?
 
   // Resultado
-  succeeded Boolean
-  critical  Boolean
-  damageApplied Int?
+  succeeded      Boolean
+  critical       Boolean
+  damageApplied  Int?
   healingApplied Int?
 
   // Defesa (para breakdown visual)
@@ -358,6 +485,10 @@ model ActionLog {
 
   type    LogType
   message String
+
+  // Log visível apenas para o mestre (ex: ajuste manual de HP).
+  // Nullable para compatibilidade com documentos antigos no Mongo.
+  masterOnly Boolean?
 
   characterId String?    @db.ObjectId
   character   Character? @relation("ActionAuthor", fields: [characterId], references: [id])
@@ -429,7 +560,7 @@ model CombatParticipant {
   character   Character @relation(fields: [characterId], references: [id])
 
   currentLife Int
-  tempHp      Int @default(0)
+  tempHp      Int  @default(0)
   initiative  Int?
   turnOrder   Int?
 
@@ -473,10 +604,25 @@ model CharacterEffect {
   presetId String       @db.ObjectId
   preset   ActionPreset @relation(fields: [presetId], references: [id])
 
+  // Linha de efeito que originou (null em efeitos legados de efeito único)
+  presetEffectId String?       @db.ObjectId
+  presetEffect   PresetEffect? @relation(fields: [presetEffectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  // Quem aplicou o efeito (controlador, autor da marca, etc.)
+  sourceCharacterId String? @db.ObjectId
+
   remainingTurns Int
   appliedAt      DateTime       @default(now())
   type           EffectType
   value          Int
+  // Fórmula rolada a cada gatilho (ex: DAMAGE_TAKEN_BONUS "1d6" por ataque)
+  valueFormula   String?
   statAffected   AttributeType?
   statusApplied  StatusType?
+
+  // Estado do reteste por rodada (efeitos resistidos)
+  retestEachRound  Boolean        @default(false)
+  contestValue     Int? // total atual a bater; decai contestDecay por rodada
+  contestDecay     Int?
+  contestAttribute AttributeType?
 }

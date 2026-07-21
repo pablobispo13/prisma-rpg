@@ -2,7 +2,7 @@ import type { NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { authenticate, AuthenticatedRequest } from "../../lib/auth";
 import { rollDice } from "../../lib/dice";
-import { LogType, EffectType, ActionType } from "@prisma/client";
+import { LogType, EffectType, ActionType, ResolutionType, AttributeType, StatusType } from "@prisma/client";
 import { getAttributeValue } from "../../lib/attributes";
 import { notifyCombatUpdate } from "../../lib/pusher";
 import { canActOnCharacter } from "../../lib/campaignAccess";
@@ -11,6 +11,22 @@ function joinNames(names: string[]): string {
     if (names.length === 1) return names[0];
     return names.slice(0, -1).join(", ") + " e " + names[names.length - 1];
 }
+
+// Efeito "achatado" pronto para aplicar: vem das linhas de PresetEffect do
+// preset ou, em presets legados sem linhas, dos campos de efeito único
+type EffectSpec = {
+    presetEffectId: string | null;
+    name: string;
+    effectType: EffectType;
+    target: "SELF" | "TARGETS";
+    value: number | null;
+    valueFormula: string | null;
+    statAffected: AttributeType | null;
+    statusApplied: StatusType | null;
+    durationTurns: number | null;
+    retestEachRound: boolean;
+    contestDecay: number | null;
+};
 
 function buildRollLog(charName: string, presetName: string, presetType: string, hitNames: string[], missNames: string[]): string {
     if (presetType !== ActionType.ATTACK) {
@@ -110,7 +126,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         logMessage,
         targetIds = [],
         combatId,
-        turnId
+        turnId,
+        selectedEffectIds
     } = req.body;
 
     if (!characterId)
@@ -200,11 +217,136 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     ===================================================== */
 
     const preset = await prisma.actionPreset.findUnique({
-        where: { id: actionPresetId }
+        where: { id: actionPresetId },
+        include: { effects: { orderBy: { sortOrder: "asc" } } },
     });
 
     if (!preset)
         return res.status(404).json({ message: "Preset inválido" });
+
+    /* =====================================================
+       SELEÇÃO DE EFEITOS (multi-efeito)
+       Presets com linhas de PresetEffect usam-nas; o modo de seleção
+       define se o jogador escolhe (CHOOSE_ONE/CHOOSE_ANY) ou aplica
+       todas (ALL). Presets legados caem nos campos de efeito único.
+    ===================================================== */
+    let effectSpecs: EffectSpec[] = [];
+
+    if (preset.effects.length > 0) {
+        let chosen = preset.effects;
+        const mode = preset.effectSelectionMode;
+
+        if (mode === "CHOOSE_ONE" || mode === "CHOOSE_ANY") {
+            const ids: string[] = Array.isArray(selectedEffectIds) ? selectedEffectIds.map(String) : [];
+            const validIds = new Set(preset.effects.map((e) => e.id));
+
+            if (ids.some((i) => !validIds.has(i))) {
+                return res.status(400).json({
+                    message: "selectedEffectIds contém efeito que não pertence a este preset",
+                    code: "EFFECT_SELECTION_INVALID",
+                });
+            }
+            if (mode === "CHOOSE_ONE" && ids.length !== 1) {
+                return res.status(400).json({
+                    message: "Esta habilidade exige escolher exatamente 1 efeito",
+                    code: "EFFECT_SELECTION_REQUIRED",
+                    mode,
+                    effects: preset.effects.map((e) => ({ id: e.id, name: e.name, description: e.description })),
+                });
+            }
+            if (mode === "CHOOSE_ANY" && ids.length === 0) {
+                return res.status(400).json({
+                    message: "Escolha pelo menos 1 efeito desta habilidade",
+                    code: "EFFECT_SELECTION_REQUIRED",
+                    mode,
+                    effects: preset.effects.map((e) => ({ id: e.id, name: e.name, description: e.description })),
+                });
+            }
+            chosen = preset.effects.filter((e) => ids.includes(e.id));
+        }
+
+        effectSpecs = chosen.map((e) => ({
+            presetEffectId: e.id,
+            name: e.name,
+            effectType: e.effectType,
+            target: e.target,
+            value: e.value,
+            valueFormula: e.valueFormula,
+            statAffected: e.statAffected,
+            statusApplied: e.statusApplied,
+            durationTurns: e.durationTurns,
+            retestEachRound: e.retestEachRound,
+            contestDecay: e.contestDecay,
+        }));
+    } else if (preset.appliesEffect) {
+        effectSpecs = [{
+            presetEffectId: null,
+            name: preset.name,
+            effectType: preset.effectType ?? (
+                preset.type === ActionType.ATTACK ? EffectType.DAMAGE_OVER_TIME : EffectType.HEAL_OVER_TIME
+            ),
+            target: "TARGETS",
+            value: preset.effectAmount,
+            valueFormula: null,
+            statAffected: preset.statAffected,
+            statusApplied: preset.statusApplied,
+            durationTurns: preset.durationTurns,
+            retestEachRound: false,
+            contestDecay: null,
+        }];
+    }
+
+    // Atributo do alvo no teste resistido (null = espelha o do conjurador)
+    const contestAttribute = preset.contestAttribute ?? preset.attribute;
+
+    /* =====================================================
+       LIMITE DE USOS POR DIA (ActionPreset.usesPerDay, null = ilimitado)
+       Escopado ao "dia do mundo" (Campaign.worldDay, null = dia 1) — o
+       mestre avança o dia em POST /campaigns/[id]/advance-day, o que
+       libera o contador de novo (nova linha de PresetDailyUsage).
+       Vale para qualquer tipo de ação (ataque, cura, suporte...), em
+       combate ou fora, não só ataques.
+    ===================================================== */
+    let dailyUsage: { worldDay: number } | null = null;
+    if (preset.usesPerDay != null) {
+        const campaignForDay = await prisma.campaign.findUnique({
+            where: { id: character.campaignId },
+            select: { worldDay: true },
+        });
+        const worldDay = campaignForDay?.worldDay ?? 1;
+
+        const existingUsage = await prisma.presetDailyUsage.findUnique({
+            where: { characterId_presetId_worldDay: { characterId: character.id, presetId: preset.id, worldDay } },
+        });
+        if (existingUsage && existingUsage.usedCount >= preset.usesPerDay) {
+            return res.status(400).json({
+                message: `Limite de ${preset.usesPerDay} uso(s) por dia de "${preset.name}" atingido`,
+                code: "DAILY_LIMIT_REACHED",
+                usesPerDay: preset.usesPerDay,
+                usedToday: existingUsage.usedCount,
+                worldDay,
+            });
+        }
+        dailyUsage = { worldDay };
+    }
+
+    /* =====================================================
+       CUSTO DE SANIDADE POR USO DE HABILIDADE (todas, automático)
+       Configurado pelo mestre — Campaign.abilitySanityCost, com override
+       por personagem em Character.abilitySanityCostOverride. Cobrado do
+       CONJURADOR uma vez por rolagem (independe de acerto/erro ou de
+       quantos alvos), somando-se a qualquer PresetEffect SANITY_DRAIN
+       específico da habilidade. No-op se sanidade não é rastreada neste
+       personagem (character.sanity == null) — mesma regra do efeito manual.
+    ===================================================== */
+    let abilitySanityCost: number | null = null;
+    if (character.sanity != null) {
+        const campaignForSanityCost = await prisma.campaign.findUnique({
+            where: { id: character.campaignId },
+            select: { abilitySanityCost: true },
+        });
+        abilitySanityCost = character.abilitySanityCostOverride ?? campaignForSanityCost?.abilitySanityCost ?? null;
+    }
 
     /* =====================================================
        LIMITE DE ATAQUES POR RODADA (só em combate)
@@ -290,9 +432,13 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
     }
 
-    // Pré-carrega todos os targets pra evitar findUnique dentro da transação
+    // Pré-carrega todos os targets pra evitar findUnique dentro da transação.
+    // statusEffects ativos entram no cálculo da defesa efetiva (DEFENSE_BUFF/DEBUFF)
     const targetsLoaded = await prisma.character.findMany({
         where: { id: { in: resolvedTargetIds } },
+        include: {
+            statusEffects: { where: { remainingTurns: { gt: 0 } } },
+        },
     });
     const targetsById = new Map(targetsLoaded.map((t) => [t.id, t]));
 
@@ -302,6 +448,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         })
         : [];
     const participantByCharId = new Map(participantsLoaded.map((p) => [p.characterId, p]));
+
+    // Participante do conjurador (efeitos com target SELF, ex: TEMP_HP em si)
+    const casterParticipant = combatId
+        ? participantByCharId.get(character.id) ??
+          await prisma.combatParticipant.findFirst({ where: { combatId, characterId: character.id } })
+        : null;
 
     const roll = await prisma.$transaction(async (tx) => {
         const created = await tx.rollResult.create({
@@ -329,13 +481,131 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         const directDamageNames: string[] = [];
         const directHealNames: string[] = [];
 
+        // Aplica uma linha de efeito num personagem (alvo ou o próprio conjurador)
+        const applyEffectSpec = async (
+            spec: EffectSpec,
+            recipient: { id: string; name: string; sanity: number | null },
+            recipientParticipant: { id: string; tempHp: number | null } | null,
+        ) => {
+            if (spec.effectType === EffectType.SANITY_DRAIN) {
+                // Sanidade não rastreada neste personagem (campo null): sem efeito
+                if (recipient.sanity == null) return;
+                const amount = spec.valueFormula ? rollDice(spec.valueFormula).total : (spec.value ?? 0);
+                if (amount <= 0) return;
+
+                const newSanity = Math.max(0, recipient.sanity - amount);
+                await tx.character.update({
+                    where: { id: recipient.id },
+                    data: { sanity: newSanity },
+                });
+                // masterOnly: sanidade é informação exclusiva do mestre, o log
+                // não deve vazar o desconto (nem o valor) para os jogadores
+                await tx.actionLog.create({
+                    data: {
+                        type: LogType.MANUAL_OVERRIDE,
+                        message: `${recipient.name} perdeu ${amount} de sanidade por ${spec.name} (${recipient.sanity} → ${newSanity})`,
+                        characterId: character.id,
+                        targetId: recipient.id,
+                        rollId: created.id,
+                        combatId: combatId ?? null,
+                        turnId: turnId ?? null,
+                        masterOnly: true,
+                    },
+                });
+                return;
+            }
+
+            if (spec.effectType === EffectType.TEMP_HP) {
+                const amount = spec.valueFormula ? rollDice(spec.valueFormula).total : (spec.value ?? 0);
+                if (amount > 0 && recipientParticipant) {
+                    const currentTempHp = recipientParticipant.tempHp ?? 0;
+                    await tx.combatParticipant.update({
+                        where: { id: recipientParticipant.id },
+                        data: { tempHp: currentTempHp + amount },
+                    });
+                    await tx.actionLog.create({
+                        data: {
+                            type: LogType.MANUAL_OVERRIDE,
+                            message: `${recipient.name} ganhou ${amount} de HP temporário por ${spec.name}`,
+                            characterId: character.id,
+                            targetId: recipient.id,
+                            rollId: created.id,
+                            combatId: combatId ?? null,
+                            turnId: turnId ?? null,
+                        },
+                    });
+                }
+                return;
+            }
+
+            if (!spec.durationTurns || spec.durationTurns <= 0) return;
+
+            // DAMAGE_TAKEN_BONUS guarda a fórmula (rolada a cada ataque recebido);
+            // os demais tipos rolam a fórmula uma única vez, agora
+            const keepFormula = spec.effectType === EffectType.DAMAGE_TAKEN_BONUS;
+            const value = !keepFormula && spec.valueFormula
+                ? rollDice(spec.valueFormula).total
+                : (spec.value ?? 0);
+            const needsStat = spec.effectType === EffectType.STAT_BUFF || spec.effectType === EffectType.STAT_DEBUFF;
+            const isContested = preset.resolution === ResolutionType.CONTESTED && spec.retestEachRound;
+
+            await tx.characterEffect.create({
+                data: {
+                    characterId: recipient.id,
+                    presetId: preset.id,
+                    presetEffectId: spec.presetEffectId,
+                    sourceCharacterId: character.id,
+                    remainingTurns: spec.durationTurns,
+                    type: spec.effectType,
+                    value,
+                    valueFormula: keepFormula ? spec.valueFormula : null,
+                    statAffected: needsStat ? spec.statAffected : null,
+                    statusApplied: spec.statusApplied ?? null,
+                    retestEachRound: isContested,
+                    contestValue: isContested ? attackTotal : null,
+                    contestDecay: isContested ? (spec.contestDecay ?? 0) : null,
+                    contestAttribute: isContested ? contestAttribute : null,
+                },
+            });
+
+            await tx.actionLog.create({
+                data: {
+                    type: LogType.MANUAL_OVERRIDE,
+                    message: spec.effectType === EffectType.CONTROLLED
+                        ? `${recipient.name} está sob controle de ${character.name} por até ${spec.durationTurns} rodada(s)`
+                        : `${recipient.name} recebeu efeito ${spec.name} por ${spec.durationTurns} turno(s)`,
+                    characterId: character.id,
+                    targetId: recipient.id,
+                    rollId: created.id,
+                    combatId: combatId ?? null,
+                    turnId: turnId ?? null,
+                },
+            });
+        };
+
         for (const targetId of resolvedTargetIds) {
             const target = targetsById.get(targetId);
             if (!target) continue;
 
+            // Defesa efetiva = defesa base + buffs/debuffs de defesa ativos no alvo
+            const defenseEffectBonus = (target.statusEffects ?? []).reduce((sum, e) => {
+                if (e.type === EffectType.DEFENSE_BUFF) return sum + Math.abs(e.value);
+                if (e.type === EffectType.DEFENSE_DEBUFF) return sum - Math.abs(e.value);
+                return sum;
+            }, 0);
+            const effectiveDefense = Math.max(0, (target.baseDefense ?? 0) + defenseEffectBonus);
+
+            // Resolução: DEFENSE (clássica, só p/ ATTACK), CONTESTED (teste
+            // resistido: alvo rola 1d20 + atributo contra o total do conjurador,
+            // empate favorece o conjurador) ou AUTO (aplica sem teste)
             let passedBaseDefense = true;
-            if (preset.type === ActionType.ATTACK) {
-                passedBaseDefense = attackTotal >= (target.baseDefense ?? 0);
+            let contestTotal: number | null = null;
+            if (preset.resolution === ResolutionType.CONTESTED) {
+                const contestRoll = rollDice("1d20");
+                contestTotal = contestRoll.total + getAttributeValue(target, contestAttribute);
+                passedBaseDefense = attackTotal >= contestTotal;
+            } else if (preset.type === ActionType.ATTACK && preset.resolution === ResolutionType.DEFENSE) {
+                passedBaseDefense = attackTotal >= effectiveDefense;
             }
 
             const combatParticipant = participantByCharId.get(targetId) ?? null;
@@ -349,11 +619,38 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                         beforeLife,
                         succeeded: false,
                         critical: false,
-                        targetDefense: target.baseDefense ?? 0,
+                        targetDefense: contestTotal ?? effectiveDefense,
                     },
                 });
+                if (contestTotal !== null) {
+                    await tx.actionLog.create({
+                        data: {
+                            type: LogType.ROLL,
+                            message: `${target.name} resistiu a ${preset.name} (${contestTotal} vs ${attackTotal})`,
+                            characterId: character.id,
+                            targetId,
+                            rollId: created.id,
+                            combatId: combatId ?? null,
+                            turnId: turnId ?? null,
+                        },
+                    });
+                }
                 missNames.push(target.name);
                 continue;
+            }
+
+            if (contestTotal !== null) {
+                await tx.actionLog.create({
+                    data: {
+                        type: LogType.ROLL,
+                        message: `${target.name} falhou no teste resistido contra ${preset.name} (${contestTotal} vs ${attackTotal})`,
+                        characterId: character.id,
+                        targetId,
+                        rollId: created.id,
+                        combatId: combatId ?? null,
+                        turnId: turnId ?? null,
+                    },
+                });
             }
 
             // Alvo sem reações restantes na rodada não entra na fila de reação:
@@ -365,8 +662,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 targetReactionLimit != null &&
                 (combatParticipant.reactionsUsed ?? 0) >= targetReactionLimit;
 
+            // Reações (esquiva/bloqueio/contra-ataque) só fazem sentido na
+            // resolução clássica por defesa — teste resistido já é a "reação"
             const shouldOpenReaction =
                 preset.type === ActionType.ATTACK &&
+                preset.resolution === ResolutionType.DEFENSE &&
                 !reactionsExhausted &&
                 !!(target.dodgePresetId || target.blockPresetId || target.counterAttackPresetId);
 
@@ -387,11 +687,35 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             const isHealType = preset.type === ActionType.HEAL || preset.type === ActionType.SUPPORT;
             let afterLife = beforeLife;
 
+            // Alvo "marcado" (DAMAGE_TAKEN_BONUS): recebe dano extra de qualquer
+            // ataque enquanto o efeito durar. Fórmula (ex: 1d6) rolada por ataque.
+            let targetImpact = impactTotal;
+            if (impactTotal && preset.type === ActionType.ATTACK) {
+                let markBonus = 0;
+                for (const mark of (target.statusEffects ?? []).filter((e) => e.type === EffectType.DAMAGE_TAKEN_BONUS)) {
+                    markBonus += mark.valueFormula ? rollDice(mark.valueFormula).total : Math.abs(mark.value);
+                }
+                if (markBonus > 0) {
+                    targetImpact = impactTotal + markBonus;
+                    await tx.actionLog.create({
+                        data: {
+                            type: LogType.DAMAGE,
+                            message: `${target.name} está marcado e sofre +${markBonus} de dano`,
+                            characterId: character.id,
+                            targetId,
+                            rollId: created.id,
+                            combatId: combatId ?? null,
+                            turnId: turnId ?? null,
+                        },
+                    });
+                }
+            }
+
             if (impactTotal) {
                 if (combatParticipant) {
                     if (preset.type === ActionType.ATTACK && !shouldOpenReaction) {
                         const currentTempHp = combatParticipant.tempHp ?? 0;
-                        let remainingDamage = impactTotal;
+                        let remainingDamage = targetImpact ?? impactTotal;
                         let newTempHp = currentTempHp;
 
                         if (currentTempHp > 0) {
@@ -425,7 +749,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     }
                 } else {
                     if (preset.type === ActionType.ATTACK) {
-                        afterLife = Math.max(0, target.life - impactTotal);
+                        afterLife = Math.max(0, target.life - (targetImpact ?? impactTotal));
                         await tx.character.update({
                             where: { id: targetId },
                             data: { life: afterLife },
@@ -447,9 +771,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     beforeLife,
                     succeeded: true,
                     critical: isCritical,
-                    damageApplied: preset.type === ActionType.ATTACK ? impactTotal : null,
+                    damageApplied: preset.type === ActionType.ATTACK ? targetImpact : null,
                     healingApplied: isHealType ? impactTotal : null,
-                    targetDefense: target.baseDefense ?? 0,
+                    targetDefense: contestTotal ?? effectiveDefense,
                 },
             });
 
@@ -474,57 +798,18 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 else if (isHealType) directHealNames.push(target.name);
             }
 
-            if (preset.appliesEffect) {
-                const effectType: EffectType = preset.effectType ?? (
-                    preset.type === ActionType.ATTACK ? EffectType.DAMAGE_OVER_TIME : EffectType.HEAL_OVER_TIME
-                );
+            for (const spec of effectSpecs) {
+                if (spec.target !== "TARGETS") continue;
+                await applyEffectSpec(spec, { id: target.id, name: target.name, sanity: target.sanity }, combatParticipant);
+            }
+        }
 
-                if (effectType === EffectType.TEMP_HP) {
-                    const amount = preset.effectAmount ?? 0;
-                    if (amount > 0 && combatParticipant) {
-                        const currentTempHp = combatParticipant.tempHp ?? 0;
-                        await tx.combatParticipant.update({
-                            where: { id: combatParticipant.id },
-                            data: { tempHp: currentTempHp + amount },
-                        });
-                        await tx.actionLog.create({
-                            data: {
-                                type: LogType.MANUAL_OVERRIDE,
-                                message: `${target.name} ganhou ${amount} de HP temporário por ${preset.name}`,
-                                characterId: character.id,
-                                targetId,
-                                rollId: created.id,
-                                combatId: combatId ?? null,
-                                turnId: turnId ?? null,
-                            },
-                        });
-                    }
-                } else if (preset.durationTurns && preset.durationTurns > 0) {
-                    const effectNeedsStat = effectType === "STAT_BUFF" || effectType === "STAT_DEBUFF";
-                    const effectNeedsValue = ["STAT_BUFF", "STAT_DEBUFF", "ROLL_BONUS", "ROLL_PENALTY",
-                        "HEAL_OVER_TIME", "DAMAGE_OVER_TIME"].includes(effectType);
-                    await tx.characterEffect.create({
-                        data: {
-                            characterId: target.id,
-                            presetId: preset.id,
-                            remainingTurns: preset.durationTurns,
-                            type: effectType,
-                            statAffected: effectNeedsStat ? (preset.statAffected ?? null) : null,
-                            value: effectNeedsValue ? (preset.effectAmount ?? 0) : 0,
-                        },
-                    });
-                    await tx.actionLog.create({
-                        data: {
-                            type: LogType.MANUAL_OVERRIDE,
-                            message: `${target.name} recebeu efeito ${preset.name} por ${preset.durationTurns} turnos`,
-                            characterId: character.id,
-                            targetId,
-                            rollId: created.id,
-                            combatId: combatId ?? null,
-                            turnId: turnId ?? null,
-                        },
-                    });
-                }
+        // Efeitos com alvo SELF aplicam uma única vez no conjurador — quando a
+        // ação surtiu efeito em alguém (ou é AUTO, que não depende de teste)
+        const selfSpecs = effectSpecs.filter((s) => s.target === "SELF");
+        if (selfSpecs.length > 0 && (hitNames.length > 0 || preset.resolution === ResolutionType.AUTO)) {
+            for (const spec of selfSpecs) {
+                await applyEffectSpec(spec, { id: character.id, name: character.name, sanity: character.sanity }, casterParticipant);
             }
         }
 
@@ -586,6 +871,54 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             await tx.combatParticipant.update({
                 where: { id: attackerParticipant.id },
                 data: { attacksUsed: { increment: 1 } },
+            });
+        }
+
+        if (abilitySanityCost && abilitySanityCost > 0) {
+            // Relê a sanidade atual dentro da transação (em vez de confiar no
+            // snapshot de fora): se esta mesma rolagem já descontou sanidade
+            // via PresetEffect SANITY_DRAIN, o custo automático soma em cima
+            // do valor já atualizado, não do valor de antes da rolagem.
+            const currentChar = await tx.character.findUnique({
+                where: { id: character.id },
+                select: { sanity: true },
+            });
+            if (currentChar?.sanity != null) {
+                const newSanity = Math.max(0, currentChar.sanity - abilitySanityCost);
+                await tx.character.update({
+                    where: { id: character.id },
+                    data: { sanity: newSanity },
+                });
+                await tx.actionLog.create({
+                    data: {
+                        type: LogType.MANUAL_OVERRIDE,
+                        message: `${character.name} gastou ${abilitySanityCost} de sanidade ao usar ${preset.name} (${currentChar.sanity} → ${newSanity})`,
+                        characterId: character.id,
+                        rollId: created.id,
+                        combatId: combatId ?? null,
+                        turnId: turnId ?? null,
+                        masterOnly: true,
+                    },
+                });
+            }
+        }
+
+        if (dailyUsage) {
+            await tx.presetDailyUsage.upsert({
+                where: {
+                    characterId_presetId_worldDay: {
+                        characterId: character.id,
+                        presetId: preset.id,
+                        worldDay: dailyUsage.worldDay,
+                    },
+                },
+                update: { usedCount: { increment: 1 } },
+                create: {
+                    characterId: character.id,
+                    presetId: preset.id,
+                    worldDay: dailyUsage.worldDay,
+                    usedCount: 1,
+                },
             });
         }
 
