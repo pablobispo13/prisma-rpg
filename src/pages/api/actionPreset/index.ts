@@ -131,6 +131,22 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
+    // Presets TRANSFORM só existem na ficha principal (nunca na forma —
+    // combat/[id].ts e o front só leem TRANSFORM via primaryForm.presets).
+    // Criar um pela ficha de uma forma alternativa (ex: editando "Habilidades"
+    // já transformado) precisa ser redirecionado pro personagem principal,
+    // senão o preset fica invisível pro botão de transformar/destransformar.
+    let resolvedCharacterId: string = characterId;
+    if (type === "TRANSFORM") {
+      const target = await prisma.character.findUnique({
+        where: { id: characterId },
+        select: { primaryFormId: true },
+      });
+      if (target?.primaryFormId) {
+        resolvedCharacterId = target.primaryFormId;
+      }
+    }
+
     let effectRows;
     try {
       effectRows = sanitizePresetEffects(effects);
@@ -173,7 +189,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         attribute: attribute as AttributeType,
         // Só relevante quando type=TRANSFORM (forma-alvo; null = volta à base)
         targetFormId: type === "TRANSFORM" && targetFormId ? targetFormId : null,
-        characterId,
+        characterId: resolvedCharacterId,
         durationTurns: durationTurns ?? null,
         statAffected: statAffected ?? null,
         effectAmount: effectAmount ?? null,

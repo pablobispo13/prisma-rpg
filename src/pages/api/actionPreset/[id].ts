@@ -124,6 +124,15 @@ async function handler(
           ? (targetFormId || null)
           : undefined;
 
+    // Presets TRANSFORM só existem na ficha principal (nunca na forma — ver
+    // mesmo raciocínio em actionPreset/index.ts). Editar um preset existente
+    // e mudar o type pra TRANSFORM enquanto ele ainda pertence a uma forma
+    // alternativa precisa realocar pra ficha principal, senão fica invisível.
+    const characterIdValue: string | undefined =
+      effectiveType === ActionType.TRANSFORM && character.primaryFormId
+        ? character.primaryFormId
+        : undefined;
+
     const updatedPreset = await prisma.actionPreset.update({
       where: { id },
       data: {
@@ -132,6 +141,7 @@ async function handler(
         effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
         usesPerDay: usesPerDayValue,
         targetFormId: targetFormIdValue,
+        characterId: characterIdValue,
         ...(effectRows ? { effects: { create: effectRows } } : {}),
         name: name ?? undefined,
         description: description ?? undefined,
