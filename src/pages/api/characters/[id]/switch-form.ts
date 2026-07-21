@@ -98,14 +98,25 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
   }
 
-  // Limite de transformações por rodada (config da ficha principal, null = ilimitado):
-  // assumir uma forma consome 1; voltar à base é livre
-  if (!isRevertToBase && primary.maxTransformationsPerRound != null && activeParticipants.length > 0) {
-    const limit = primary.maxTransformationsPerRound;
-    const exhausted = activeParticipants.some((p) => (p.transformationsUsed ?? 0) >= limit);
-    if (exhausted) {
+  // Limite de transformações por dia (config da ficha principal, null = ilimitado):
+  // assumir uma forma consome 1; voltar à base é livre. Escopado ao worldDay
+  // da mesa (o mestre avança o dia para liberar de novo, ver advance-day.ts)
+  let worldDay = 1;
+  let transformationUsage: { usedCount: number } | null = null;
+  if (primary.maxTransformationsPerDay != null) {
+    const campaignForDay = await prisma.campaign.findUnique({
+      where: { id: primary.campaignId },
+      select: { worldDay: true },
+    });
+    worldDay = campaignForDay?.worldDay ?? 1;
+
+    transformationUsage = await prisma.characterTransformationDailyUsage.findUnique({
+      where: { characterId_worldDay: { characterId: primary.id, worldDay } },
+    });
+
+    if (!isRevertToBase && (transformationUsage?.usedCount ?? 0) >= primary.maxTransformationsPerDay) {
       res.status(400).json({
-        message: `Limite de ${limit} transformação(ões) por rodada atingido — aguarde a próxima rodada`,
+        message: `Limite de ${primary.maxTransformationsPerDay} transformação(ões) por dia atingido — aguarde o próximo dia`,
       });
       return;
     }
@@ -135,8 +146,6 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         data: {
           characterId: newActiveId,
           currentLife: Math.min(newActive.life, newActive.maxLife),
-          // Voltar à base não consome o limite da rodada
-          ...(isRevertToBase ? {} : { transformationsUsed: { increment: 1 } }),
         },
       });
 
@@ -169,6 +178,15 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           message: `${currentActive.name} se transformou em ${newActive.name}`,
           characterId: newActiveId,
         },
+      });
+    }
+
+    // Voltar à base não consome o limite diário; só assumir uma forma conta
+    if (!isRevertToBase && primary.maxTransformationsPerDay != null) {
+      await tx.characterTransformationDailyUsage.upsert({
+        where: { characterId_worldDay: { characterId: primary.id, worldDay } },
+        update: { usedCount: { increment: 1 } },
+        create: { characterId: primary.id, worldDay, usedCount: 1 },
       });
     }
   });

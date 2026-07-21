@@ -225,6 +225,27 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         return res.status(404).json({ message: "Preset inválido" });
 
     /* =====================================================
+       AÇÃO PRINCIPAL DO TURNO (1x por turno, fora ataque)
+       Ataques têm slot próprio (attacksUsed/maxAttacksPerRound, abaixo).
+       Demais ações com requiresTurn=true (habilidades "clássicas") só
+       podem ser usadas 1x por turno — enforcement no servidor, não só
+       no front (que é facilmente dessincronizado por reload de página).
+       requiresTurn=false = ação livre, não entra nesta checagem.
+    ===================================================== */
+    if (turnId && preset.type !== ActionType.ATTACK && preset.requiresTurn) {
+        const existingMainAction = await prisma.rollResult.findFirst({
+            where: { turnId, preset: { requiresTurn: true, type: { not: ActionType.ATTACK } } },
+            select: { id: true },
+        });
+        if (existingMainAction) {
+            return res.status(400).json({
+                message: "A ação principal deste turno já foi usada",
+                code: "MAIN_ACTION_ALREADY_USED",
+            });
+        }
+    }
+
+    /* =====================================================
        SELEÇÃO DE EFEITOS (multi-efeito)
        Presets com linhas de PresetEffect usam-nas; o modo de seleção
        define se o jogador escolhe (CHOOSE_ONE/CHOOSE_ANY) ou aplica
@@ -548,6 +569,20 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 : (spec.value ?? 0);
             const needsStat = spec.effectType === EffectType.STAT_BUFF || spec.effectType === EffectType.STAT_DEBUFF;
             const isContested = preset.resolution === ResolutionType.CONTESTED && spec.retestEachRound;
+
+            // Recastar a MESMA habilidade (mesmo conjurador) no mesmo alvo
+            // RENOVA o efeito em vez de empilhar — evita duplicar (ex: 2
+            // efeitos CONTROLLED no mesmo alvo, cada um com contestValue e
+            // remainingTurns próprios, confundindo o reteste e a exibição)
+            await tx.characterEffect.deleteMany({
+                where: {
+                    characterId: recipient.id,
+                    sourceCharacterId: character.id,
+                    ...(spec.presetEffectId
+                        ? { presetEffectId: spec.presetEffectId }
+                        : { presetId: preset.id, presetEffectId: null }),
+                },
+            });
 
             await tx.characterEffect.create({
                 data: {

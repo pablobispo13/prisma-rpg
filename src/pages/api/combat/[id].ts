@@ -15,7 +15,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     // Valida que o usuário tem acesso à mesa dona deste combate
     const owning = await prisma.combat.findUnique({
         where: { id },
-        select: { campaignId: true },
+        select: { campaignId: true, campaign: { select: { worldDay: true } } },
     });
     if (!owning) {
         res.status(404).json({ message: "Combate não encontrado" });
@@ -26,6 +26,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         res.status(403).json({ message: "Sem acesso a esta mesa" });
         return;
     }
+    const worldDay = owning.campaign.worldDay ?? 1;
 
     if (req.method === "GET") {
         const combat = await prisma.combat.findUnique({
@@ -35,13 +36,21 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     include: {
                         character: {
                             include: {
-                                presets: true,
+                                // Uso diário (worldDay atual) por habilidade, pro indicador
+                                // visual de "X/Y usos hoje" no botão da ação em combate
+                                presets: { include: { dailyUsages: { where: { worldDay } } } },
                                 statusEffects: true,
                                 owner: { select: { role: true } },
                                 // Para o botão de transformação na tela de combate
                                 forms: { select: { id: true, name: true, image: true } },
-                                // Limite de transformações fica na ficha principal
-                                primaryForm: { select: { maxTransformationsPerRound: true } },
+                                // Limite e uso diário de transformações ficam na ficha principal
+                                primaryForm: {
+                                    select: {
+                                        maxTransformationsPerDay: true,
+                                        transformationDailyUsages: { where: { worldDay }, select: { usedCount: true } },
+                                    },
+                                },
+                                transformationDailyUsages: { where: { worldDay }, select: { usedCount: true } },
                             },
                         },
                     },

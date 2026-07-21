@@ -65,7 +65,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         baseDefense: source.baseDefense,
         maxReactionsPerRound: source.maxReactionsPerRound,
         maxAttacksPerRound: source.maxAttacksPerRound,
-        maxTransformationsPerRound: source.maxTransformationsPerRound,
+        maxTransformationsPerDay: source.maxTransformationsPerDay,
         history: source.history,
         notes: source.notes,
         image: formImage,

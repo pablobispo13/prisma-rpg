@@ -209,11 +209,63 @@ function presetTooltipContent(preset: ActionPresetType) {
           </>
         )}
 
+        {preset.usesPerDay != null && (
+          <>
+            <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
+            <Row
+              label="Usos hoje"
+              value={`${preset.dailyUsages?.[0]?.usedCount ?? 0} / ${preset.usesPerDay}`}
+              danger={(preset.dailyUsages?.[0]?.usedCount ?? 0) >= preset.usesPerDay}
+            />
+          </>
+        )}
+
         <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
         <Typography fontSize={10} color="#9ca3af">
           {preset.requiresTurn ? "⚡ Consome turno" : "✓ Ação livre"}{" "}
           {preset.allowOutOfCombat ? "• ✓ Fora de combate" : ""}{" "}
           {preset.isAreaEffect ? "• 🌐 Área" : ""}
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
+function transformTooltipContent(
+  char: any,
+  transformLimit: number | null,
+  transformsLeft: number | null,
+) {
+  const forms: Array<{ id: string; name: string }> = char?.forms ?? [];
+  const isTransformed = !!char?.primaryFormId;
+  const currentName = isTransformed ? char?.name : (char?.activeFormId ? forms.find((f) => f.id === char.activeFormId)?.name : null) ?? char?.name;
+  const availableCount = forms.length + (isTransformed ? 1 : 0); // formas + volta à base
+
+  return (
+    <Box sx={{ p: 0.5, maxWidth: 260 }}>
+      <Typography fontWeight="bold" fontSize={13} mb={0.5}>Transformação</Typography>
+      <Typography fontSize={11} color="#ccc" mb={1} sx={{ fontStyle: "italic" }}>
+        Assumir uma forma alternativa do personagem
+      </Typography>
+
+      <Divider sx={{ borderColor: "#ffffff20", my: 0.75 }} />
+
+      <Stack spacing={0.4}>
+        <Row label="Forma atual" value={currentName ?? "—"} highlight />
+        <Row label="Formas disponíveis" value={String(availableCount)} />
+        {transformLimit != null && (
+          <Row
+            label="Limite por dia"
+            value={`${transformsLeft ?? 0} / ${transformLimit} restantes`}
+            danger={(transformsLeft ?? 0) <= 0}
+          />
+        )}
+        {transformLimit == null && <Row label="Limite por dia" value="Ilimitado" />}
+
+        <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
+        <Typography fontSize={10} color="#9ca3af">
+          ✓ Ação livre — não consome o turno<br />
+          Voltar à forma base nunca gasta o limite diário
         </Typography>
       </Stack>
     </Box>
@@ -503,16 +555,19 @@ function CombatScreenContent() {
   const transformHasForms =
     !!transformChar && ((transformChar.forms?.length ?? 0) > 0 || !!transformChar.primaryFormId);
 
-  // Limite de transformações por rodada (config da ficha principal; null =
-  // ilimitado). Assumir uma forma consome 1; voltar à base é livre
+  // Limite de transformações por dia (config da ficha principal; null =
+  // ilimitado). Assumir uma forma consome 1; voltar à base é livre. Uso de
+  // hoje vem escopado ao worldDay atual (ver combat/[id].ts)
   const transformLimit: number | null =
-    transformChar?.primaryForm?.maxTransformationsPerRound ??
-    transformChar?.maxTransformationsPerRound ??
+    transformChar?.primaryForm?.maxTransformationsPerDay ??
+    transformChar?.maxTransformationsPerDay ??
     null;
+  const transformsUsedToday: number =
+    transformChar?.primaryForm?.transformationDailyUsages?.[0]?.usedCount ??
+    transformChar?.transformationDailyUsages?.[0]?.usedCount ??
+    0;
   const transformsLeft =
-    transformLimit == null
-      ? null
-      : Math.max(0, transformLimit - (myReactParticipant?.transformationsUsed ?? 0));
+    transformLimit == null ? null : Math.max(0, transformLimit - transformsUsedToday);
 
   async function openFormMenu(e: React.MouseEvent<HTMLElement>) {
     if (!transformChar || formLoading) return;
@@ -551,7 +606,10 @@ function CombatScreenContent() {
     }
   }
   const presetsSource = isMaster ? activeCharacter : (myParticipant?.character ?? activeCharacter);
-  const canAct = isMyTurn && !pendingReactionRoll && !actionUsed;
+  // Não inclui !actionUsed: cada botão de habilidade decide sozinho se
+  // bloqueia (preset.requiresTurn && actionUsed) — ações livres
+  // (requiresTurn === false) continuam disponíveis após a ação principal
+  const canAct = isMyTurn && !pendingReactionRoll;
   const canEndTurn = isMyTurn && !pendingReactionRoll;
 
   // Habilidades exibidas em combate: a ficha transformada mostra apenas as
@@ -852,7 +910,7 @@ function CombatScreenContent() {
             )}
             {transformsLeft !== null && transformHasForms && (
               <Typography fontSize={12} color={transformsLeft > 0 ? "#a78bfa" : "#f87171"} mt={0.5}>
-                🜂 Transformações restantes nesta rodada: {transformsLeft}/{transformLimit} (voltar à base é livre)
+                🜂 Transformações restantes hoje: {transformsLeft}/{transformLimit} (voltar à base é livre)
               </Typography>
             )}
             {!isMyTurn && !isMaster && myParticipant && <Typography fontSize={11} color="#6b7280" mt={0.5}>Suas habilidades — disponíveis no seu turno</Typography>}
@@ -866,6 +924,9 @@ function CombatScreenContent() {
               const presetIsHeal = preset.type === "HEAL" || preset.type === "SUPPORT";
               if (["TEST", "REACT"].includes(preset.type)) return null;
 
+              const usedToday = preset.dailyUsages?.[0]?.usedCount ?? 0;
+              const dailyExhausted = preset.usesPerDay != null && usedToday >= preset.usesPerDay;
+
               return (
                 <Tooltip
                   key={preset.id}
@@ -878,15 +939,15 @@ function CombatScreenContent() {
                     <Button
                       variant={isArmed ? "contained" : preset.requiresTurn ? "contained" : "outlined"}
                       color={isArmed ? (presetIsHeal ? "success" : "secondary") : preset.requiresTurn ? "primary" : "inherit"}
-                      disabled={!canAct || isLoading || (preset.requiresTurn && actionUsed)}
+                      disabled={!canAct || isLoading || (preset.requiresTurn && actionUsed) || dailyExhausted}
                       onClick={() => {
-                        if (!canAct || isLoading || (preset.requiresTurn && actionUsed)) return;
+                        if (!canAct || isLoading || (preset.requiresTurn && actionUsed) || dailyExhausted) return;
                         if (!needsTarget) {
-                          useMainAction({ presetId: preset.id, targetIds: [], characterId: activeCharacter.id, presetType: preset.type });
+                          useMainAction({ presetId: preset.id, targetIds: [], characterId: activeCharacter.id, presetType: preset.type, requiresTurn: preset.requiresTurn });
                           return;
                         }
                         if (isArmed && selectedTargets.length > 0) {
-                          useMainAction({ presetId: preset.id, targetIds: selectedTargets, characterId: activeCharacter.id, presetType: preset.type });
+                          useMainAction({ presetId: preset.id, targetIds: selectedTargets, characterId: activeCharacter.id, presetType: preset.type, requiresTurn: preset.requiresTurn });
                           setSelectedPresetId(null);
                         } else {
                           if (selectedPresetId !== preset.id) clearTargets();
@@ -906,23 +967,54 @@ function CombatScreenContent() {
                     {presetIsAoe && (
                       <Chip label="Área" size="small" sx={{ position: "absolute", top: -8, right: -8, height: 16, fontSize: 9, bgcolor: "#7c3aed", color: "#fff", pointerEvents: "none" }} />
                     )}
+                    {preset.usesPerDay != null && (
+                      <Chip
+                        label={`${usedToday}/${preset.usesPerDay} dia`}
+                        size="small"
+                        sx={{
+                          position: "absolute", bottom: -8, left: -8, height: 16, fontSize: 9, pointerEvents: "none",
+                          bgcolor: dailyExhausted ? "#7f1d1d" : "#1e3a5f",
+                          color: dailyExhausted ? "#fca5a5" : "#93c5fd",
+                        }}
+                      />
+                    )}
                   </Box>
                 </Tooltip>
               );
             })}
 
             {transformHasForms && (
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<AutorenewIcon />}
-                disabled={formLoading || !!pendingReactionRoll}
-                onClick={openFormMenu}
-                sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
+              <Tooltip
+                title={transformTooltipContent(transformChar, transformLimit, transformsLeft)}
+                placement="top"
+                arrow
+                componentsProps={{ tooltip: { sx: { backgroundColor: "#1a1a2e", border: "1px solid rgba(124,58,237,0.4)", maxWidth: 280 } } }}
               >
-                {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
-                Transformar
-              </Button>
+                <Box sx={{ position: "relative", display: "inline-flex" }}>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<AutorenewIcon />}
+                    disabled={formLoading || !!pendingReactionRoll}
+                    onClick={openFormMenu}
+                    sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
+                  >
+                    {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
+                    Transformar
+                  </Button>
+                  {transformLimit != null && (
+                    <Chip
+                      label={`${transformsLeft ?? 0}/${transformLimit} dia`}
+                      size="small"
+                      sx={{
+                        position: "absolute", bottom: -8, left: -8, height: 16, fontSize: 9, pointerEvents: "none",
+                        bgcolor: (transformsLeft ?? 0) <= 0 ? "#7f1d1d" : "#3b1e5f",
+                        color: (transformsLeft ?? 0) <= 0 ? "#fca5a5" : "#c4b5fd",
+                      }}
+                    />
+                  )}
+                </Box>
+              </Tooltip>
             )}
 
             {isMyTurn && (

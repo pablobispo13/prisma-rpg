@@ -297,7 +297,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 if (nextRound > combat.round) {
                     await prisma.combatParticipant.updateMany({
                         where: { combatId },
-                        data: { attacksUsed: 0, reactionsUsed: 0, transformationsUsed: 0 },
+                        data: { attacksUsed: 0, reactionsUsed: 0 },
                     });
                 }
 
@@ -378,7 +378,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (nextRound > combat.round) {
                 await prisma.combatParticipant.updateMany({
                     where: { combatId },
-                    data: { attacksUsed: 0, reactionsUsed: 0, transformationsUsed: 0 },
+                    data: { attacksUsed: 0, reactionsUsed: 0 },
                 });
             }
 

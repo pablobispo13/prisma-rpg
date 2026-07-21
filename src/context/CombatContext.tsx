@@ -23,6 +23,7 @@ export type EffectSelectionRequest = {
     targetIds: string[];
     characterId: string;
     presetType?: string;
+    requiresTurn?: boolean;
     mode: "CHOOSE_ONE" | "CHOOSE_ANY";
     effects: { id: string; name: string; description?: string | null }[];
 };
@@ -48,6 +49,7 @@ export type CombatContextType = {
         targetIds: string[];
         characterId: string;
         presetType?: string;
+        requiresTurn?: boolean;
     }) => Promise<void>;
     effectSelectionRequest: EffectSelectionRequest | null;
     confirmEffectSelection: (selectedEffectIds: string[]) => Promise<void>;
@@ -286,7 +288,8 @@ export function CombatProvider({
             targetIds,
             characterId,
             presetType,
-        }: { presetId: string; targetIds: string[]; characterId: string; presetType?: string },
+            requiresTurn,
+        }: { presetId: string; targetIds: string[]; characterId: string; presetType?: string; requiresTurn?: boolean },
         selectedEffectIds?: string[],
     ) {
         const turnId = activeTurnIdRef.current ?? activeTurn?.id;
@@ -296,11 +299,15 @@ export function CombatProvider({
         }
 
         const isAttack = presetType === "ATTACK";
+        // Ações com requiresTurn === false são livres (não consomem a ação
+        // principal da rodada) — só a ação "clássica" (requiresTurn !== false,
+        // exceto ataque, que usa o slot próprio) marca o turno como usado
+        const consumesTurn = !isAttack && requiresTurn !== false;
 
         try {
             if (isAttack) {
                 setOptimisticAttacks((n) => n + 1);
-            } else {
+            } else if (consumesTurn) {
                 optimisticActionRef.current = true;
                 setActionUsed(true);
             }
@@ -322,7 +329,7 @@ export function CombatProvider({
         } catch (err) {
             if (isAttack) {
                 setOptimisticAttacks((n) => Math.max(0, n - 1));
-            } else {
+            } else if (consumesTurn) {
                 optimisticActionRef.current = false;
                 setActionUsed(false);
             }
@@ -334,6 +341,7 @@ export function CombatProvider({
                     targetIds,
                     characterId,
                     presetType,
+                    requiresTurn,
                     mode: axiosErr.response.data.mode ?? "CHOOSE_ONE",
                     effects: axiosErr.response.data.effects ?? [],
                 });
@@ -351,15 +359,18 @@ export function CombatProvider({
         targetIds: string[];
         characterId: string;
         presetType?: string;
+        requiresTurn?: boolean;
     }) {
         if (!combat || !isMyTurn) return;
         if (pendingReactionRoll) return;
 
-        // Ataques consomem "slots" da rodada; demais ações seguem a regra clássica de 1 por turno
+        // Ataques consomem "slots" da rodada; ações com requiresTurn === false
+        // são livres; as demais seguem a regra clássica de 1 por turno
         const isAttack = payload.presetType === "ATTACK";
+        const consumesTurn = !isAttack && payload.requiresTurn !== false;
         if (isAttack) {
             if (attacksLeft <= 0) return;
-        } else {
+        } else if (consumesTurn) {
             if (actionUsed || optimisticActionRef.current) return;
         }
 

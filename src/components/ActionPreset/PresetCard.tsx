@@ -241,6 +241,19 @@ export function PresetCard({
                       </Typography>
                     </Box>
                   )}
+
+                  {"usesPerDay" in preset && preset.usesPerDay != null && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Usos por dia:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="500">
+                        {"dailyUsages" in preset && preset.dailyUsages?.[0]
+                          ? `${preset.dailyUsages[0].usedCount} / ${preset.usesPerDay}`
+                          : preset.usesPerDay}
+                      </Typography>
+                    </Box>
+                  )}
                 </Stack>
 
                 {/* Crítico */}

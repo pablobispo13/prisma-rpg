@@ -33,7 +33,7 @@ export type Character = {
     // Overrides dos limites da mesa (null = usa o da campanha)
     maxReactionsPerRound?: number | null;
     maxAttacksPerRound?: number | null;
-    maxTransformationsPerRound?: number | null;
+    maxTransformationsPerDay?: number | null;
 
     // Formas alternativas (transformações)
     primaryFormId?: string | null;
@@ -104,6 +104,9 @@ export type ActionPresetType = {
     contestAttribute?: string | null;
     // Limite de usos por dia (null = ilimitado)
     usesPerDay?: number | null;
+    // Uso já registrado no worldDay atual (só vem preenchido no GET de
+    // combate, escopado ao dia vigente da mesa — ver combat/[id].ts)
+    dailyUsages?: { usedCount: number }[];
     // Multi-efeito: quando presente e não-vazio, substitui os campos legados
     effectSelectionMode?: "ALL" | "CHOOSE_ONE" | "CHOOSE_ANY";
     effects?: PresetEffectType[];

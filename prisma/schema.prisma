@@ -235,10 +235,11 @@ model Character {
   maxReactionsPerRound Int?
   maxAttacksPerRound   Int?
 
-  // Limite de transformações por rodada em combate (configurado na ficha
-  // principal). Conta apenas assumir uma forma; voltar à base é livre.
-  // null = ilimitado
-  maxTransformationsPerRound Int?
+  // Limite de transformações por dia (configurado na ficha principal).
+  // Conta apenas assumir uma forma; voltar à base é livre. Escopado ao
+  // Campaign.worldDay — o mestre avança o dia para liberar de novo (ver
+  // CharacterTransformationDailyUsage). null = ilimitado
+  maxTransformationsPerDay Int?
 
   // Formas alternativas (ex: transformação em zumbi): cada forma é um
   // Character "irmão" completo apontando para o principal. Formas não
@@ -281,6 +282,7 @@ model Character {
   // Status temporários
   statusEffects CharacterEffect[]
   dailyUsages   PresetDailyUsage[]
+  transformationDailyUsages CharacterTransformationDailyUsage[]
 }
 
 ///////////////////////
@@ -403,6 +405,26 @@ model PresetDailyUsage {
   usedCount Int @default(0)
 
   @@unique([characterId, presetId, worldDay])
+}
+
+///////////////////////
+// USO DIÁRIO DE TRANSFORMAÇÃO
+///////////////////////
+
+// Contador de transformações do personagem (ficha principal), escopado ao
+// worldDay vigente na criação da linha — mesmo padrão de PresetDailyUsage,
+// mas por personagem (não há preset envolvido). Voltar à forma base não
+// consome; ver Character.maxTransformationsPerDay e switch-form.ts.
+model CharacterTransformationDailyUsage {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  characterId String    @db.ObjectId
+  character   Character @relation(fields: [characterId], references: [id])
+
+  worldDay  Int
+  usedCount Int @default(0)
+
+  @@unique([characterId, worldDay])
 }
 
 ///////////////////////
@@ -565,9 +587,8 @@ model CombatParticipant {
   turnOrder   Int?
 
   // Contadores da rodada atual — zerados quando a rodada avança (control.ts)
-  attacksUsed         Int @default(0)
-  reactionsUsed       Int @default(0)
-  transformationsUsed Int @default(0)
+  attacksUsed   Int @default(0)
+  reactionsUsed Int @default(0)
 }
 
 ///////////////////////

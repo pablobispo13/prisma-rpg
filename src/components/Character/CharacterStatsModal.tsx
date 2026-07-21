@@ -50,7 +50,7 @@ const BLANK = {
   presence: 0,
   maxReactionsPerRound: "" as string | number,
   maxAttacksPerRound: "" as string | number,
-  maxTransformationsPerRound: "" as string | number,
+  maxTransformationsPerDay: "" as string | number,
   sanity: "" as string | number,
   maxSanity: "" as string | number,
   abilitySanityCostOverride: "" as string | number,
@@ -93,7 +93,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         presence: character.presence,
         maxReactionsPerRound: character.maxReactionsPerRound ?? "",
         maxAttacksPerRound: character.maxAttacksPerRound ?? "",
-        maxTransformationsPerRound: character.maxTransformationsPerRound ?? "",
+        maxTransformationsPerDay: character.maxTransformationsPerDay ?? "",
         sanity: character.sanity ?? "",
         maxSanity: character.maxSanity ?? "",
         abilitySanityCostOverride: character.abilitySanityCostOverride ?? "",
@@ -152,8 +152,8 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 form.maxReactionsPerRound === "" ? null : Number(form.maxReactionsPerRound),
               maxAttacksPerRound:
                 form.maxAttacksPerRound === "" ? null : Number(form.maxAttacksPerRound),
-              maxTransformationsPerRound:
-                form.maxTransformationsPerRound === "" ? null : Number(form.maxTransformationsPerRound),
+              maxTransformationsPerDay:
+                form.maxTransformationsPerDay === "" ? null : Number(form.maxTransformationsPerDay),
               sanity: form.sanity === "" ? null : Number(form.sanity),
               maxSanity: form.maxSanity === "" ? null : Number(form.maxSanity),
               abilitySanityCostOverride:
@@ -343,9 +343,9 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
                 {!character?.primaryFormId && (
                   <TextField
                     select
-                    label="Transformações por rodada"
-                    value={form.maxTransformationsPerRound}
-                    onChange={(e) => update("maxTransformationsPerRound", e.target.value)}
+                    label="Transformações por dia"
+                    value={form.maxTransformationsPerDay}
+                    onChange={(e) => update("maxTransformationsPerDay", e.target.value)}
                     fullWidth
                     SelectProps={{ displayEmpty: true }}
                     InputLabelProps={{ shrink: true }}
