@@ -38,6 +38,8 @@ import { ActionLogCard } from "./ActionLogCard";
 import { CharacterHeaderCard } from "./CharacterHeaderCard";
 import { CharacterNotesModal } from "./CharacterNotesModal";
 import { AttributeCard } from "../Jogador/AttributeCard";
+import { RollableActionCard } from "../Jogador/RollableActionCard";
+import { getActionColor, getActionIcon } from "../../lib/presetUtils";
 import { LifeBarCard } from "../Jogador/LifeBarCard";
 import { StreamPiP } from "../Stream/StreamPiP";
 import { useActiveStream } from "../../lib/useActiveStream";
@@ -78,6 +80,11 @@ export function CharacterSheet({
   const [inventory, setInventory] = useState<CharacterInventory[]>([]);
   const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  // Testes de atributo (type TEST) viraram os cards clicáveis em "Atributos"
+  // — não aparecem mais duplicados aqui, na caixa de ações rápidas.
+  const quickActions = actionPresets.filter(
+    (p) => p.allowOutOfCombat && p.type !== "TEST" && presetUsable(p)
+  );
 
   const handleDelete = async (id: string) => {
     await api.delete(`/actionPreset/${id}`).then(() => {
@@ -141,7 +148,7 @@ export function CharacterSheet({
 
   return (
     <>
-    <Stack gap={2} sx={{ px: { xs: 1, sm: 2 } }}>
+    <Stack gap={2} sx={{ px: { xs: 1, sm: 2 }, ...(quickActions.length > 0 ? { pr: { lg: "336px" } } : {}) }}>
       <Head>
         <title>Ficha {character.name}</title>
       </Head>
@@ -237,7 +244,7 @@ export function CharacterSheet({
           position: "relative",
           p: 0,
           minWidth: { xs: "100%", sm: 650 },
-          maxWidth: 1000,
+          maxWidth: { xs: "100%", sm: 1000 },
           mx: "auto",
           width: { xs: "100%", sm: "auto" },
           marginBottom: 2,
@@ -321,14 +328,16 @@ export function CharacterSheet({
 
             <Divider sx={{ borderColor: "rgba(255,255,255,.1)" }} />
 
-            {/* Atributos */}
+            {/* Atributos — cada card é clicável e rola o teste do atributo */}
             <Section title="Atributos">
-              <AttributeCard loading={loading} character={character} />
+              <AttributeCard loading={loading} character={character} presets={actionPresets} />
             </Section>
 
             {/* Inventário */}
             <Section
               title="Inventário"
+              collapsible
+              storageKey={`sheet-section-inventory-${character.id}`}
               action={
                 !loading &&
                 canEdit && (
@@ -374,27 +383,11 @@ export function CharacterSheet({
               </Stack>
             </Section>
 
-            {/* Habilidades Fora de Combate */}
-            {!loading && actionPresets.some((p) => p.allowOutOfCombat && presetUsable(p)) && (
-              <Section title="Ações Fora de Combate">
-                <Stack direction="row" spacing={1.5} flexWrap="wrap">
-                  {actionPresets
-                    .filter((p) => p.allowOutOfCombat && presetUsable(p))
-                    .map((preset) => (
-                      <Roller
-                        key={preset.id}
-                        actionPresetId={preset.id}
-                        characterId={character.id}
-                        label={preset.name}
-                      />
-                    ))}
-                </Stack>
-              </Section>
-            )}
-
             {/* Habilidades / Presets */}
             <Section
               title="Habilidades"
+              collapsible
+              storageKey={`sheet-section-presets-${character.id}`}
               action={
                 !loading &&
                 canEdit && (
@@ -456,9 +449,45 @@ export function CharacterSheet({
               </Stack>
             </Section>
 
+            {/* Ações Fora de Combate — travada na direita da tela, acompanha o
+                scroll (position:fixed de verdade: sticky não funciona aqui
+                porque o Box decorativo ancestral usa overflow:hidden, e
+                qualquer overflow != visible num ancestral quebra sticky) */}
+            {!loading && quickActions.length > 0 && (
+              <Box
+                sx={{
+                  position: { xs: "static", lg: "fixed" },
+                  width: { xs: "100%", lg: 280 },
+                  top: { lg: 88 },
+                  right: { lg: 24 },
+                  maxHeight: { lg: "calc(100vh - 112px)" },
+                  overflowY: { lg: "auto" },
+                  zIndex: { lg: 10 },
+                }}
+              >
+                <Section title="Ações Fora de Combate">
+                  <Stack spacing={1.5}>
+                    {quickActions.map((preset) => (
+                      <RollableActionCard
+                        key={preset.id}
+                        characterId={character.id}
+                        actionPresetId={preset.id}
+                        icon={getActionIcon(preset.type)}
+                        color={getActionColor(preset.type)}
+                        label={preset.name}
+                        layout="row"
+                      />
+                    ))}
+                  </Stack>
+                </Section>
+              </Box>
+            )}
+
             {/* Rolagens */}
             <Section
               title="Rolagens Recentes"
+              collapsible
+              storageKey={`sheet-section-rolls-${character.id}`}
               action={
                 !loading &&
                 canEdit && (

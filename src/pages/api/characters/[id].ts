@@ -141,7 +141,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         baseDefense,
         history,
         notes,
-        ...(allowImage ? { image: image || null } : {}),
+        ...(allowImage && image !== undefined ? { image: image || null } : {}),
         ...(allowLimitOverrides
           ? {
               maxReactionsPerRound: normalizeLimit(maxReactionsPerRound),

@@ -470,10 +470,13 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                             />
                             <TextField
                                 label="Descrição"
-                                multiline rows={2}
+                                multiline
+                                minRows={6}
+                                maxRows={20}
                                 value={form.description}
                                 onChange={e => update("description", e.target.value)}
                                 fullWidth size="small"
+                                sx={{ "& textarea": { resize: "vertical" } }}
                             />
                         </Stack>
                     </Box>

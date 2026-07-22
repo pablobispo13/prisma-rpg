@@ -1,12 +1,42 @@
-import { Box, Typography, Stack, Divider } from "@mui/material";
+import { useEffect, useState } from "react";
+import { Box, Typography, Stack, Divider, IconButton, Collapse } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 type Props = {
   title: string;
   children: React.ReactNode;
   action?: React.ReactNode;
+  // Quando true, mostra um chevron pra recolher/expandir o conteúdo da seção
+  collapsible?: boolean;
+  // Se informado, o estado aberto/fechado persiste no localStorage sob essa chave
+  storageKey?: string;
+  defaultOpen?: boolean;
 };
 
-export function Section({ title, children, action }: Props) {
+export function Section({
+  title,
+  children,
+  action,
+  collapsible = false,
+  storageKey,
+  defaultOpen = true,
+}: Props) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (!collapsible || !storageKey) return;
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored !== null) setOpen(stored === "1");
+  }, [collapsible, storageKey]);
+
+  const toggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (storageKey) window.localStorage.setItem(storageKey, next ? "1" : "0");
+      return next;
+    });
+  };
+
   return (
     <Box>
       <Stack
@@ -19,7 +49,14 @@ export function Section({ title, children, action }: Props) {
           position: "relative",
         }}
       >
-        <Stack direction="row" alignItems="center" spacing={1} flex={1}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          flex={1}
+          onClick={collapsible ? toggle : undefined}
+          sx={{ cursor: collapsible ? "pointer" : "default" }}
+        >
           <Box
             sx={{
               width: 4,
@@ -42,8 +79,22 @@ export function Section({ title, children, action }: Props) {
           >
             {title}
           </Typography>
+          {collapsible && (
+            <IconButton size="small" sx={{ p: 0.25 }}>
+              <ExpandMoreIcon
+                sx={{
+                  fontSize: "1.2rem",
+                  color: "#8B9DFF",
+                  transform: open ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.3s",
+                }}
+              />
+            </IconButton>
+          )}
         </Stack>
-        {action && <Box>{action}</Box>}
+        {action && (
+          <Box onClick={(e) => e.stopPropagation()}>{action}</Box>
+        )}
         <Divider
           sx={{
             position: "absolute",
@@ -56,7 +107,13 @@ export function Section({ title, children, action }: Props) {
         />
       </Stack>
 
-      {children}
+      {collapsible ? (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          {children}
+        </Collapse>
+      ) : (
+        children
+      )}
     </Box>
   );
 }

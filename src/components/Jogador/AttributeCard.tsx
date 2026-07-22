@@ -1,23 +1,17 @@
 "use client";
 
-import {
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Skeleton,
-} from "@mui/material";
-import { Character, Character_Attributes } from "../../types/types";
+import { Grid } from "@mui/material";
+import { ActionPresetType, Character, Character_Attributes } from "../../types/types";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import SpeedIcon from "@mui/icons-material/Speed";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import SchoolIcon from "@mui/icons-material/School";
 import EmojiPeopleIcon from "@mui/icons-material/EmojiPeople";
-import { useState } from "react";
+import { RollableActionCard } from "./RollableActionCard";
 
 type Props = {
   character: Character;
+  presets?: ActionPresetType[];
   loading?: boolean;
 };
 
@@ -32,75 +26,29 @@ const attributeConfig: Record<
   presence: { icon: <EmojiPeopleIcon />, color: "#FFA726", label: "Presença" },
 };
 
-export function AttributeCard({ character, loading = false }: Props) {
+export function AttributeCard({ character, presets = [], loading = false }: Props) {
   return (
     <Grid container spacing={{ xs: 1, sm: 1.5 }}>
       {Character_Attributes.map(({ key, label }) => {
         const config = attributeConfig[key];
         const value = character[key] || 0;
-        const [hovering, setHovering] = useState(false);
+        // Preset "Teste <Atributo>" auto-gerado por personagem (type TEST,
+        // attribute = atributo em maiúsculo) — clicar no card rola direto
+        const testPreset = presets.find(
+          (p) => p.type === "TEST" && p.attribute === key.toUpperCase()
+        );
 
         return (
           <Grid key={key}>
-            <Card
-              onMouseEnter={() => setHovering(true)}
-              onMouseLeave={() => setHovering(false)}
-              sx={{
-                backgroundColor: "rgba(255, 255, 255, 0.03)",
-                border: `2px solid ${hovering ? config.color : "rgba(255, 255, 255, 0.1)"}`,
-                borderRadius: 2,
-                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                boxShadow: hovering
-                  ? `0 8px 24px ${config.color}40`
-                  : "0 2px 8px rgba(0, 0, 0, 0.3)",
-                height: "100%",
-              }}
-            >
-              <CardContent
-                sx={{
-                  p: 1.5,
-                  "&:last-child": { pb: 1.5 },
-                  textAlign: "center",
-                }}
-              >
-                <Box
-                  sx={{
-                    fontSize: "1.5rem",
-                    width: 40,
-                    height: 40,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: `${config.color}20`,
-                    borderRadius: 1,
-                    border: `1px solid ${config.color}40`,
-                    margin: "0 auto 0.75rem",
-                    color: config.color,
-                  }}
-                >
-                  {config.icon}
-                </Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                  mb={0.5}
-                >
-                  {label}
-                </Typography>
-                {loading ? (
-                  <Skeleton width="50%" sx={{ mx: "auto" }} />
-                ) : (
-                  <Typography
-                    variant="h5"
-                    fontWeight="bold"
-                    sx={{ color: config.color }}
-                  >
-                    {value}
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
+            <RollableActionCard
+              characterId={character.id}
+              actionPresetId={testPreset?.id}
+              icon={config.icon}
+              color={config.color}
+              label={label}
+              value={value}
+              loading={loading}
+            />
           </Grid>
         );
       })}
