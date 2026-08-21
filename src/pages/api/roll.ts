@@ -501,10 +501,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         const impactRoll = rollDice(resolvedImpactFormula);
         impactRolls = impactRoll.rolls;
         impactDroppedRolls = impactRoll.droppedRolls;
-        // Mesmo raciocínio do dado de ataque: não soma o atributo de novo se
-        // a fórmula de impacto já usa {{atributo}}.
+        // Diferente do dado de ataque, o atributo do preset NÃO soma
+        // automático no impacto — só entra se a fórmula referenciar
+        // {{atributo}} explicitamente (o mestre optou por embuti-lo). O
+        // Modificador (bônus fixo) sempre soma, independente disso.
         const impactUsesAttribute = formulaReferencesAttribute(preset.impactFormula, preset.attribute);
-        impactTotal = impactRoll.total + (impactUsesAttribute ? effectBonus : effectiveAttribute);
+        impactTotal = impactRoll.total + (impactUsesAttribute ? effectBonus : 0) + flatModifier;
         if (isCritical && preset.critMultiplier) {
             impactTotal = Math.floor(impactTotal * preset.critMultiplier);
         }

@@ -6,6 +6,7 @@ import {
   calculateCriticalDamage,
   formulaReferencesAttribute,
 } from "../../lib/presetUtils";
+import { resolveAttributeAlias } from "../../lib/formula";
 
 type Props = {
   impactFormula: string | null | undefined;
@@ -29,12 +30,21 @@ export function DamageCalculator({
   // Fórmulas que já usam {{atributo}} não somam o bônus de novo — mesmo
   // raciocínio de POST /roll (ver src/lib/attributes.ts::formulaReferencesAttribute)
   const diceUsesAttribute = formulaReferencesAttribute(diceFormula, attributeName);
-  const impactUsesAttribute = formulaReferencesAttribute(impactFormula, attributeName);
 
+  // Mapa mínimo pra resolver {{atributo}} embutido na fórmula de impacto
+  // (ex: "2d8+{{vigor}}") com o valor já calculado do atributo selecionado.
+  const attributeValues = attributeName
+    ? { [resolveAttributeAlias(attributeName)]: characterAttribute }
+    : undefined;
+
+  // Diferente do dado de ataque, o atributo NÃO soma automático no dano —
+  // só entra se a fórmula de impacto referenciar {{atributo}} explicitamente
+  // (resolvido acima via attributeValues). Mesmo raciocínio de POST /roll.
   const damage = calculateDamageEstimate(
     impactFormula,
     modifier,
-    impactUsesAttribute ? 0 : characterAttribute,
+    0,
+    attributeValues,
   );
 
   if (!damage) {

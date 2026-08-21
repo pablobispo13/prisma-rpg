@@ -119,20 +119,34 @@ export function getTargetName(type: TargetType): string {
 export function calculateDamageEstimate(
   impactFormula: string | null | undefined,
   modifier: number = 0,
-  characterAttribute: number = 0
+  characterAttribute: number = 0,
+  attributeValues?: Record<string, number>
 ) {
   if (!impactFormula) return null;
 
+  // Resolve {{vigor}} etc antes de extrair o dado — senão o bônus embutido
+  // na fórmula (ex: "2d8+{{vigor}}") nunca entra na conta (fica só como
+  // texto), mesmo com o valor certo no mapa de atributos.
+  const resolvedFormula = attributeValues
+    ? previewFormulaVariables(impactFormula, attributeValues)
+    : impactFormula;
+
   // Parse simples para formulas como "2d6", "1d20", etc
-  const diceMatch = impactFormula.match(/(\d+)d(\d+)/);
+  const diceMatch = resolvedFormula.match(/(\d+)d(\d+)/);
   if (!diceMatch) return null;
 
   const numberOfDice = parseInt(diceMatch[1]);
   const diceSize = parseInt(diceMatch[2]);
 
-  const minDamage = numberOfDice + modifier + characterAttribute;
-  const maxDamage = numberOfDice * diceSize + modifier + characterAttribute;
-  const avgDamage = Math.round((numberOfDice * (diceSize + 1)) / 2 + modifier + characterAttribute);
+  // Bônus fixo logo após o dado, ex: "2d8+5" (já resolvido a partir de
+  // "2d8+{{vigor}}") -> +5
+  const afterDice = resolvedFormula.slice((diceMatch.index ?? 0) + diceMatch[0].length);
+  const flatBonusMatch = afterDice.match(/^\s*([+-]\s*\d+)/);
+  const embeddedBonus = flatBonusMatch ? parseInt(flatBonusMatch[1].replace(/\s+/g, "")) : 0;
+
+  const minDamage = numberOfDice + modifier + characterAttribute + embeddedBonus;
+  const maxDamage = numberOfDice * diceSize + modifier + characterAttribute + embeddedBonus;
+  const avgDamage = Math.round((numberOfDice * (diceSize + 1)) / 2 + modifier + characterAttribute + embeddedBonus);
 
   return {
     min: Math.max(0, minDamage),
@@ -181,7 +195,15 @@ export function formatPresetDisplay(
   }
 
   if (impactFormula) {
-    display += ` → ${previewFormulaVariables(impactFormula, attributeValues)}`;
+    let impactDisplay = previewFormulaVariables(impactFormula, attributeValues);
+    // Modificador soma no dano também (ver POST /roll) — mostra aqui pra não
+    // dar a entender que só afeta a rolagem de ataque
+    if (modifier > 0) {
+      impactDisplay += `+${modifier}`;
+    } else if (modifier < 0) {
+      impactDisplay += `${modifier}`;
+    }
+    display += ` → ${impactDisplay}`;
   }
 
   return display;

@@ -154,10 +154,13 @@ function presetTooltipContent(preset: ActionPresetType, attributeValues: Record<
   const resolvedDice = previewFormulaVariables(preset.diceFormula, attributeValues);
   const resolvedImpact = preset.impactFormula ? previewFormulaVariables(preset.impactFormula, attributeValues) : null;
   const diceUsesAttribute = formulaReferencesAttribute(preset.diceFormula, preset.attribute);
-  const impactUsesAttribute = formulaReferencesAttribute(preset.impactFormula, preset.attribute);
 
   const avgAttack = parseDiceAverage(resolvedDice);
-  const avgDamage = resolvedImpact ? parseDiceAverage(resolvedImpact) : null;
+  // Dano NÃO herda o atributo automático (só se a fórmula referenciar
+  // {{atributo}}, já resolvido em resolvedImpact acima) — mas o Modificador
+  // sempre soma, mesmo raciocínio de POST /roll.
+  const avgDamageBase = resolvedImpact ? parseDiceAverage(resolvedImpact) : null;
+  const avgDamage = avgDamageBase !== null ? avgDamageBase + (preset.modifier ?? 0) : null;
   const avgCrit =
     avgDamage && preset.critMultiplier
       ? Math.round(avgDamage * preset.critMultiplier * 10) / 10
@@ -199,16 +202,16 @@ function presetTooltipContent(preset: ActionPresetType, attributeValues: Record<
           <>
             <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
             <Typography fontSize={11} color="#f87171" fontWeight={600}>Impacto</Typography>
-            <Row label="Fórmula" value={`${resolvedImpact}  (média ${avgDamage})`} />
+            <Row label="Fórmula" value={`${resolvedImpact}  (média ${avgDamageBase})`} />
             <Row
               label="Dano médio"
-              value={impactUsesAttribute ? `~${avgDamage}` : `~${avgDamage} + ${attrLabel}`}
+              value={`~${avgDamage}`}
               highlight
             />
             {avgCrit && (
               <Row
                 label={`Crítico ×${preset.critMultiplier}`}
-                value={impactUsesAttribute ? `~${avgCrit}` : `~${avgCrit} + ${attrLabel}`}
+                value={`~${avgCrit}`}
                 danger
               />
             )}

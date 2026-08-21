@@ -451,7 +451,7 @@ export function CharacterSheet({
               </Stack>
             </Section>
 
-            {/* Ações Fora de Combate — travada na direita da tela, acompanha o
+            {/* Rolagens rápidas — travada na direita da tela, acompanha o
                 scroll (position:fixed de verdade: sticky não funciona aqui
                 porque o Box decorativo ancestral usa overflow:hidden, e
                 qualquer overflow != visible num ancestral quebra sticky) */}
@@ -467,7 +467,7 @@ export function CharacterSheet({
                   zIndex: { lg: 10 },
                 }}
               >
-                <Section title="Ações Fora de Combate">
+                <Section title="Rolagens rá">
                   <Stack spacing={1.5}>
                     {quickActions.map((preset) => (
                       <RollableActionCard

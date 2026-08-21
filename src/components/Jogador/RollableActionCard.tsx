@@ -22,7 +22,7 @@ type Props = {
 /**
  * Card clicável que rola um teste (via actionPresetId) e mostra o resultado
  * sobrepondo o valor por alguns segundos. Usado nos Atributos da ficha e nas
- * Ações Fora de Combate. Rola sem pedir alvo — usado como teste livre (ex:
+ * Rolagens Rápidas. Rola sem pedir alvo — usado como teste livre (ex:
  * "testar Força contra algo do cenário"), não aplica dano a ninguém quando
  * o preset tem alvo (ENEMY/ALLY/MULTIPLE) mas nenhum foi selecionado (ver
  * POST /roll). Escolher um alvo de verdade só existe dentro de combate
