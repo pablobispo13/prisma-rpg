@@ -184,12 +184,36 @@ export function useScreenShareBroadcaster(campaignId: string | null) {
         setLocalStream(stream);
     }, [campaignId, stop]);
 
-    // Cleanup ao desmontar ou trocar de campanha
+    // Para o compartilhamento numa troca de mesa DE VERDADE (campaignId
+    // muda de um valor não-nulo pra outro valor não-nulo diferente) — não
+    // quando campaignId só passa por null momentaneamente (ex: enquanto
+    // useCampaign() recarrega a campanha ativa durante uma navegação entre
+    // telas, ficha <-> combate). Antes, qualquer mudança de campaignId
+    // (inclusive pra null e de volta) derrubava o compartilhamento sem o
+    // mestre ter clicado em nada, mesmo a captura do navegador continuando
+    // ativa — daí a tela mostrar "não compartilhando" incoerente com a
+    // barra do Chrome ainda visível.
+    const previousCampaignIdRef = useRef(campaignId);
+    useEffect(() => {
+        const previousCampaignId = previousCampaignIdRef.current;
+        previousCampaignIdRef.current = campaignId;
+        if (
+            sharingRef.current &&
+            previousCampaignId &&
+            campaignId &&
+            campaignId !== previousCampaignId
+        ) {
+            stopInternal();
+        }
+    }, [campaignId, stopInternal]);
+
+    // Cleanup ao desmontar de verdade (aba fechando/app encerrando) — sem
+    // depender de campaignId, então só roda quando o componente realmente sai
     useEffect(() => {
         return () => {
             if (sharingRef.current) stopInternal();
         };
-    }, [campaignId, stopInternal]);
+    }, [stopInternal]);
 
     // Best-effort: avisa o servidor se a aba fechar enquanto compartilha
     useEffect(() => {
