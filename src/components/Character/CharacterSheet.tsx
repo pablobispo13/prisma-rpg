@@ -467,7 +467,7 @@ export function CharacterSheet({
                   zIndex: { lg: 10 },
                 }}
               >
-                <Section title="Rolagens rá">
+                <Section title="Rolagens rápidas">
                   <Stack spacing={1.5}>
                     {quickActions.map((preset) => (
                       <RollableActionCard
