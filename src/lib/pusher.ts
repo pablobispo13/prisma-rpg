@@ -35,15 +35,32 @@ export async function notifyCombatListUpdate(campaignId?: string): Promise<void>
     }
 }
 
-export async function notifyStreamUpdate(campaignId?: string): Promise<void> {
+export async function notifyScreenShareState(
+    campaignId: string,
+    state: { active: boolean; sessionId: string | null }
+): Promise<void> {
     const pusher = getPusher();
     if (!pusher) return;
     try {
-        const channel = campaignId ? `campaign-${campaignId}-stream` : "stream";
-        await pusher.trigger(channel, "updated", {});
+        await pusher.trigger(`campaign-${campaignId}-screenshare`, "state", state);
     } catch (err) {
         if (process.env.NODE_ENV === "development") {
-            console.error("[Pusher] Falha ao notificar stream:", err);
+            console.error("[Pusher] Falha ao notificar estado do compartilhamento de tela:", err);
+        }
+    }
+}
+
+export async function notifyScreenShareSignal(
+    campaignId: string,
+    payload: Record<string, unknown>
+): Promise<void> {
+    const pusher = getPusher();
+    if (!pusher) return;
+    try {
+        await pusher.trigger(`private-campaign-${campaignId}-screenshare-signal`, "signal", payload);
+    } catch (err) {
+        if (process.env.NODE_ENV === "development") {
+            console.error("[Pusher] Falha ao retransmitir sinal de compartilhamento de tela:", err);
         }
     }
 }

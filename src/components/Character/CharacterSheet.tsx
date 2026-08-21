@@ -41,8 +41,7 @@ import { AttributeCard } from "../Jogador/AttributeCard";
 import { RollableActionCard } from "../Jogador/RollableActionCard";
 import { getActionColor, getActionIcon } from "../../lib/presetUtils";
 import { LifeBarCard } from "../Jogador/LifeBarCard";
-import { StreamPiP } from "../Stream/StreamPiP";
-import { useActiveStream } from "../../lib/useActiveStream";
+import { ScreenSharePiP } from "../Stream/ScreenSharePiP";
 import { useCampaign } from "../../context/CampaignContext";
 import { isNpc } from "../../lib/isNpc";
 
@@ -74,7 +73,6 @@ export function CharacterSheet({
   const isTransformedSheet = !!characterLoaded.primaryFormId;
   const presetUsable = (p: ActionPresetType) => isTransformedSheet || !p.transformedOnly;
   const { combats } = useActiveCombats();
-  const activeStreamUrl = useActiveStream();
   const [character, setCharacter] = useState<Character>(characterLoaded);
   const [actionPresets, setActionPresets] = useState<ActionPresetType[]>([]);
   const [inventory, setInventory] = useState<CharacterInventory[]>([]);
@@ -573,7 +571,7 @@ export function CharacterSheet({
       </Box>
     </Stack>
 
-    {activeStreamUrl && <StreamPiP streamUrl={activeStreamUrl} />}
+    <ScreenSharePiP />
     </>
   );
 }

@@ -36,6 +36,7 @@ import api from "../../lib/api";
 import { Character } from "../../types/types";
 import { useActiveCombats } from "../../lib/useActiveCombats";
 import { useCampaign } from "../../context/CampaignContext";
+import { useScreenShareContext } from "../../context/ScreenShareContext";
 import { isNpc } from "../../lib/isNpc";
 import { createCharacterTemplate, Archetype, ARCHETYPE_LABELS } from "../../lib/characterTemplate";
 import CharacterCombatSelector from "../Character/CharacterCombatSelector";
@@ -208,10 +209,7 @@ export default function MesaMestre() {
   const { activeCampaign } = useCampaign();
   const masterId = activeCampaign?.masterId ?? null;
 
-  // Stream
-  const [streamInput, setStreamInput] = useState("");
-  const [streamSaving, setStreamSaving] = useState(false);
-  const [streamActive, setStreamActive] = useState(false);
+  const { sharing: screenSharing, viewerCount: screenShareViewerCount, error: screenShareError, start: startScreenShare, stop: stopScreenShare } = useScreenShareContext();
 
   // Character sections
   const [playersOpen, setPlayersOpen] = useState(true);
@@ -231,27 +229,6 @@ export default function MesaMestre() {
   const [showHidden, setShowHidden] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get("/stream", { silent: true }).then((res) => {
-      const url = res.data?.streamUrl ?? "";
-      setStreamInput(url);
-      setStreamActive(!!url);
-    }).catch(() => {});
-  }, []);
-
-  async function saveStream() {
-    setStreamSaving(true);
-    try {
-      await api.post("/stream", { streamUrl: streamInput || null });
-      setStreamActive(!!streamInput);
-      toast.success(streamInput ? "Stream ativada para todos os jogadores" : "Stream removida");
-    } catch {
-      // interceptor already toasts
-    } finally {
-      setStreamSaving(false);
-    }
-  }
 
   const fetchCharacters = useCallback(async () => {
     if (!token) return;
@@ -368,39 +345,32 @@ export default function MesaMestre() {
       <Box sx={{ overflow: "auto", pr: 1 }}>
         <Stack gap={2}>
 
-          {/* STREAM */}
+          {/* COMPARTILHAMENTO DE TELA */}
           <Paper elevation={6} sx={{
             p: 2,
             background: "linear-gradient(135deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.9) 100%)",
-            border: `1px solid ${streamActive ? "rgba(107,219,122,0.4)" : "rgba(107,122,219,0.2)"}`,
+            border: `1px solid ${screenSharing ? "rgba(107,219,122,0.4)" : "rgba(107,122,219,0.2)"}`,
             transition: "border-color 0.3s",
           }}>
             <Stack direction="row" alignItems="center" gap={1.5}>
-              <LiveTvIcon sx={{ color: streamActive ? "#4ade80" : "#6B7ADB", flexShrink: 0 }} />
-              <Typography fontWeight={600} sx={{ color: streamActive ? "#4ade80" : "#8B9DFF", minWidth: 120 }}>
-                {streamActive ? "Stream ativa" : "Stream de mapa"}
+              <LiveTvIcon sx={{ color: screenSharing ? "#4ade80" : "#6B7ADB", flexShrink: 0 }} />
+              <Typography fontWeight={600} sx={{ color: screenSharing ? "#4ade80" : "#8B9DFF", flex: 1 }}>
+                {screenSharing
+                  ? `Compartilhando tela (${screenShareViewerCount} assistindo)`
+                  : "Compartilhamento de tela"}
               </Typography>
-              <TextField
-                size="small"
-                placeholder="URL do Twitch ou YouTube…"
-                value={streamInput}
-                onChange={(e) => setStreamInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && saveStream()}
-                sx={{ flex: 1, "& .MuiInputBase-input": { fontSize: 13 } }}
-              />
-              <Button
-                variant={streamActive ? "outlined" : "contained"}
-                color={streamActive ? "error" : "primary"}
-                size="small"
-                disabled={streamSaving}
-                onClick={saveStream}
-                sx={{ minWidth: 80, flexShrink: 0 }}
-              >
-                {streamSaving ? <CircularProgress size={14} /> : streamActive ? "Remover" : "Ativar"}
-              </Button>
-              {streamActive && streamInput && (
-                <IconButton size="small" onClick={() => setStreamInput("")} sx={{ color: "#555" }} title="Limpar URL">✕</IconButton>
+              {screenShareError && (
+                <Typography fontSize={12} color="#f87171">{screenShareError}</Typography>
               )}
+              <Button
+                variant={screenSharing ? "outlined" : "contained"}
+                color={screenSharing ? "error" : "primary"}
+                size="small"
+                onClick={screenSharing ? stopScreenShare : startScreenShare}
+                sx={{ minWidth: 140, flexShrink: 0 }}
+              >
+                {screenSharing ? "Parar compartilhamento" : "Compartilhar tela"}
+              </Button>
             </Stack>
           </Paper>
 

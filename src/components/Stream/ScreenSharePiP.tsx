@@ -1,43 +1,36 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, IconButton, Tooltip, Typography } from "@mui/material";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import CloseIcon from "@mui/icons-material/Close";
 import LiveTvIcon from "@mui/icons-material/LiveTv";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
+import { useScreenShareContext } from "../../context/ScreenShareContext";
 
-interface Props {
-  streamUrl: string;
-}
-
-export function parseEmbedUrl(url: string): string | null {
-  if (!url) return null;
-  const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost";
-
-  const twitchMatch = url.match(/twitch\.tv\/([^/?#]+)/);
-  if (twitchMatch) {
-    return `https://player.twitch.tv/?channel=${twitchMatch[1]}&parent=${hostname}&autoplay=true&muted=false`;
-  }
-  const ytWatch = url.match(/youtube\.com\/watch\?.*v=([^&#]+)/);
-  if (ytWatch) return `https://www.youtube.com/embed/${ytWatch[1]}?autoplay=1&mute=1`;
-  const ytShort = url.match(/youtu\.be\/([^?#]+)/);
-  if (ytShort) return `https://www.youtube.com/embed/${ytShort[1]}?autoplay=1&mute=1`;
-  const ytLive = url.match(/youtube\.com\/live\/([^?#]+)/);
-  if (ytLive) return `https://www.youtube.com/embed/${ytLive[1]}?autoplay=1&mute=1`;
-  return null;
-}
-
-export function StreamPiP({ streamUrl }: Props) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+export function ScreenSharePiP() {
+  const { active, stream } = useScreenShareContext();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [dismissed, setDismissed] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // Autoplay com áudio é bloqueado pelo browser sem gesto do usuário —
+  // começa mudo e o usuário liga o som manualmente.
+  const [muted, setMuted] = useState(true);
 
-  const embedUrl = parseEmbedUrl(streamUrl);
-  if (!embedUrl || dismissed) return null;
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream;
+  }, [stream]);
+
+  useEffect(() => {
+    if (active) setDismissed(false);
+  }, [active]);
+
+  if (!active || !stream || dismissed) return null;
 
   function handleFullscreen() {
-    // Usa a API nativa do browser — não recria o iframe, stream continua
-    iframeRef.current?.requestFullscreen?.();
+    // Usa a API nativa do browser — não recria o <video>, stream continua
+    videoRef.current?.requestFullscreen?.();
   }
 
   return (
@@ -83,8 +76,20 @@ export function StreamPiP({ streamUrl }: Props) {
             textOverflow: "ellipsis",
           }}
         >
-          {collapsed ? "Stream" : "Stream ao vivo"}
+          {collapsed ? "Tela" : "Tela do mestre"}
         </Typography>
+
+        {!collapsed && (
+          <Tooltip title={muted ? "Ativar áudio" : "Silenciar"}>
+            <IconButton
+              size="small"
+              onClick={() => setMuted((v) => !v)}
+              sx={{ color: "#555", p: 0.25, "&:hover": { color: "#aaa" } }}
+            >
+              {muted ? <VolumeOffIcon sx={{ fontSize: 14 }} /> : <VolumeUpIcon sx={{ fontSize: 14 }} />}
+            </IconButton>
+          </Tooltip>
+        )}
 
         {!collapsed && (
           <Tooltip title="Tela cheia">
@@ -122,8 +127,8 @@ export function StreamPiP({ streamUrl }: Props) {
       </Box>
 
       {/*
-        Iframe SEMPRE montado — colapsar usa height:0 + overflow:hidden
-        para não pausar a reprodução (diferente de display:none).
+        <video> SEMPRE montado — colapsar usa height:0 + overflow:hidden
+        para não interromper a conexão WebRTC (diferente de display:none).
       */}
       <Box
         sx={{
@@ -132,13 +137,13 @@ export function StreamPiP({ streamUrl }: Props) {
           transition: "height 0.25s ease",
         }}
       >
-        <Box sx={{ width: "100%", aspectRatio: "16/9" }}>
-          <iframe
-            ref={iframeRef}
-            src={embedUrl}
-            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
+        <Box sx={{ width: "100%", aspectRatio: "16/9", backgroundColor: "#000" }}>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={muted}
+            style={{ width: "100%", height: "100%", display: "block" }}
           />
         </Box>
       </Box>

@@ -47,7 +47,7 @@ const FEATURES = [
   {
     icon: <LiveTvIcon sx={{ fontSize: 26 }} />,
     title: "Acompanhamento ao vivo",
-    text: "Tela de combate atualizada em tempo real para todos os jogadores, com log de eventos e stream da mesa.",
+    text: "Tela de combate atualizada em tempo real para todos os jogadores, com log de eventos e compartilhamento de tela do mestre.",
   },
 ];
 

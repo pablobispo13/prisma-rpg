@@ -29,17 +29,18 @@ import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import { useCombat, CombatProvider } from "../../context/CombatContext";
 import api from "../../lib/api";
 import { useRouter } from "next/router";
 import { ActionPresetType } from "../../types/types";
 import { CombatTimelineV2 } from "../Log/CombatTimelineV2";
-import { parseEmbedUrl } from "../Stream/StreamPiP";
 import { DiceInputRoller } from "../DiceInputRoller";
 import Head from "next/head";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
-import { useActiveStream } from "../../lib/useActiveStream";
+import { useScreenShareContext } from "../../context/ScreenShareContext";
 import { characterImageSrc } from "../../lib/characterImage";
 import { useCampaign } from "../../context/CampaignContext";
 import { isNpc as checkIsNpc } from "../../lib/isNpc";
@@ -341,7 +342,9 @@ function CombatScreenContent() {
 
   // Fullscreen battlefield
   const [battleFullscreen, setBattleFullscreen] = useState(false);
-  const battleIframeRef = useRef<HTMLIFrameElement>(null);
+  const [fullscreenMuted, setFullscreenMuted] = useState(true);
+  const battleVideoRef = useRef<HTMLVideoElement>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
 
   // Armed preset (user must pick an action before selecting targets)
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
@@ -355,14 +358,19 @@ function CombatScreenContent() {
   }, [actionUsed, isMyTurn]);
 
   function handleBattleFullscreen() {
-    if (battleIframeRef.current?.requestFullscreen) {
-      battleIframeRef.current.requestFullscreen();
+    if (battleVideoRef.current?.requestFullscreen) {
+      battleVideoRef.current.requestFullscreen();
     } else {
       setBattleFullscreen(true); // fallback para navegadores sem suporte
     }
   }
 
-  const streamUrl = useActiveStream();
+  const { active: screenShareActive, stream: screenShareStream } = useScreenShareContext();
+
+  useEffect(() => {
+    if (battleVideoRef.current) battleVideoRef.current.srcObject = screenShareStream;
+    if (fullscreenVideoRef.current) fullscreenVideoRef.current.srcObject = screenShareStream;
+  }, [screenShareStream, battleFullscreen]);
 
   // Redireciona jogadores automaticamente quando o combate é encerrado
   useEffect(() => {
@@ -834,8 +842,8 @@ function CombatScreenContent() {
         <Box sx={{ display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid rgba(107,122,219,0.2)", background: "radial-gradient(circle at center, #1a1a2e 0%, #0e0e1a 70%)", position: "relative" }}>
           {/* Barra de título */}
           <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid rgba(107,122,219,0.15)", display: "flex", alignItems: "center", gap: 1, backgroundColor: "rgba(14,14,26,0.8)", flexShrink: 0 }}>
-            <Typography fontSize={11} color={streamUrl ? "#4ade80" : "#555"} sx={{ flex: 1 }}>
-              {streamUrl ? "🔴 Stream ativa" : "Campo de batalha"}
+            <Typography fontSize={11} color={screenShareActive ? "#4ade80" : "#555"} sx={{ flex: 1 }}>
+              {screenShareActive ? "🔴 Tela compartilhada" : "Campo de batalha"}
             </Typography>
             <Tooltip title="Tela cheia">
               <IconButton onClick={handleBattleFullscreen} sx={{ color: "#444", "&:hover": { color: "#aaa" } }}>
@@ -844,19 +852,19 @@ function CombatScreenContent() {
             </Tooltip>
           </Box>
 
-          {/* Conteúdo: stream ou placeholder */}
+          {/* Conteúdo: tela compartilhada ou placeholder */}
           <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-            {streamUrl && parseEmbedUrl(streamUrl) ? (
-              <iframe
-                ref={battleIframeRef}
-                src={parseEmbedUrl(streamUrl)!}
-                style={{ width: "100%", height: "100%", border: "none" }}
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
+            {screenShareActive && screenShareStream ? (
+              <video
+                ref={battleVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: "100%", height: "100%", objectFit: "contain" }}
               />
             ) : (
               <Typography color="#333" fontSize={12} textAlign="center">
-                {isMaster ? "Configure a stream na tela inicial" : "Aguardando stream do mestre…"}
+                {isMaster ? "Compartilhe sua tela na tela inicial" : "Aguardando compartilhamento do mestre…"}
               </Typography>
             )}
           </Box>
@@ -1282,15 +1290,24 @@ function CombatScreenContent() {
                 </IconButton>
               </Stack>
 
-              {/* Stream fullscreen */}
-              {streamUrl && parseEmbedUrl(streamUrl) && (
-                <Box sx={{ mb: 3, borderRadius: 2, overflow: "hidden", border: "1px solid rgba(107,122,219,0.3)", height: 480 }}>
-                  <iframe
-                    src={parseEmbedUrl(streamUrl)!}
-                    style={{ width: "100%", height: "100%", border: "none" }}
-                    allow="autoplay; fullscreen"
-                    allowFullScreen
+              {/* Tela compartilhada fullscreen */}
+              {screenShareActive && screenShareStream && (
+                <Box sx={{ mb: 3, borderRadius: 2, overflow: "hidden", border: "1px solid rgba(107,122,219,0.3)", height: 480, position: "relative" }}>
+                  <video
+                    ref={fullscreenVideoRef}
+                    autoPlay
+                    playsInline
+                    muted={fullscreenMuted}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   />
+                  <Tooltip title={fullscreenMuted ? "Ativar áudio" : "Silenciar"}>
+                    <IconButton
+                      onClick={() => setFullscreenMuted((v) => !v)}
+                      sx={{ position: "absolute", top: 8, right: 8, color: "#ccc", backgroundColor: "rgba(0,0,0,0.4)", "&:hover": { backgroundColor: "rgba(0,0,0,0.6)" } }}
+                    >
+                      {fullscreenMuted ? <VolumeOffIcon fontSize="small" /> : <VolumeUpIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
                 </Box>
               )}
 

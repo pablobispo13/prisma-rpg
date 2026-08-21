@@ -6,6 +6,7 @@ import { ToastContainer } from "react-toastify";
 import { ThemeContext, ThemeContextProvider } from "../context/ThemeContext";
 import { AuthProvider } from "../context/AuthContext";
 import { CampaignProvider } from "../context/CampaignContext";
+import { ScreenShareProvider } from "../context/ScreenShareContext";
 import Layout from "../components/Layout";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
@@ -20,15 +21,17 @@ export default function MyApp({ Component, pageProps }: AppProps) {
             </Head>
             <AuthProvider>
                 <CampaignProvider>
-                    <Layout>
-                        <CssBaseline />
-                        <Component {...pageProps} />
-                        <ToastContainer
-                            theme={mode}
-                            position="top-right"
-                            autoClose={6000}
-                        />
-                    </Layout>
+                    <ScreenShareProvider>
+                        <Layout>
+                            <CssBaseline />
+                            <Component {...pageProps} />
+                            <ToastContainer
+                                theme={mode}
+                                position="top-right"
+                                autoClose={6000}
+                            />
+                        </Layout>
+                    </ScreenShareProvider>
                 </CampaignProvider>
             </AuthProvider>
             </>

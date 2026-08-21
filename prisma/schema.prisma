@@ -133,9 +133,16 @@ model Campaign {
   name        String
   description String?
   image       String?
-  streamUrl   String?
+  streamUrl   String? // deprecated — não usado mais, substituído por compartilhamento de tela (screenShare*)
   createdAt   DateTime  @default(now())
   archivedAt  DateTime?
+
+  // Compartilhamento de tela ao vivo (WebRTC) do mestre. screenShareSessionId
+  // identifica a sessão de broadcast corrente (desempate entre abas do
+  // mestre e detecção de sessão obsoleta por quem entra depois).
+  screenShareActive    Boolean   @default(false)
+  screenShareSessionId String?
+  screenShareUpdatedAt DateTime?
 
   // Fórmulas de atributos derivados configuráveis pelo mestre.
   // null = usa a fórmula padrão do sistema. Variáveis: forca, agilidade,
