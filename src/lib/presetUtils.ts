@@ -1,4 +1,55 @@
 import { ActionType, TargetType } from "@prisma/client";
+import { resolveAttributeAlias } from "./formula";
+
+const VARIABLE_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+/** Mesma checagem de src/lib/attributes.ts::formulaReferencesAttribute, só que sem depender do prisma (seguro pro bundle do client). */
+export function formulaReferencesAttribute(formula: string | null | undefined, attribute: string): boolean {
+  if (!formula || !attribute) return false;
+  const target = resolveAttributeAlias(attribute);
+  for (const match of formula.matchAll(VARIABLE_PATTERN)) {
+    if (resolveAttributeAlias(match[1]) === target) return true;
+  }
+  return false;
+}
+
+const FIXED_ATTRIBUTE_KEYS = ["strength", "agility", "vigor", "intellect", "presence"];
+
+/** Mapa { chave canônica -> valor } com os 5 atributos fixos + customizados de um personagem, pra resolver {{atributo}} na exibição. */
+export function buildAttributeValueMap(character: {
+  strength?: number;
+  agility?: number;
+  vigor?: number;
+  intellect?: number;
+  presence?: number;
+  customAttributes?: Record<string, number> | null;
+} | null | undefined): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const key of FIXED_ATTRIBUTE_KEYS) {
+    map[key] = (character as Record<string, unknown>)?.[key] as number ?? 0;
+  }
+  for (const [key, value] of Object.entries(character?.customAttributes ?? {})) {
+    map[key] = Number(value) || 0;
+  }
+  return map;
+}
+
+/**
+ * Substitui {{atributo}} pelo valor resolvido (ex: "{{força}}d20" ->
+ * "8d20") — usado em exibições fora da edição (card de habilidade, tooltip,
+ * logs), onde o texto da variável não ajuda ninguém a ler a ficha. Sem mapa
+ * de valores ou sem variável na fórmula, devolve a fórmula como está.
+ */
+export function previewFormulaVariables(
+  formula: string | null | undefined,
+  attributeValues?: Record<string, number>
+): string {
+  if (!formula) return "";
+  if (!attributeValues || !formula.includes("{{")) return formula;
+  return formula.replace(VARIABLE_PATTERN, (_m, word: string) =>
+    String(attributeValues[resolveAttributeAlias(word)] ?? 0)
+  );
+}
 
 export const ACTION_COLORS: Record<ActionType, string> = {
   ATTACK: "#FF6B6B",      // Vermelho
@@ -112,11 +163,14 @@ export function formatPresetDisplay(
   impactFormula: string | null | undefined,
   modifier: number = 0,
   characterAttribute: number = 0,
-  attributeName: string = ""
+  attributeName: string = "",
+  attributeValues?: Record<string, number>
 ): string {
-  let display = diceFormula;
+  let display = previewFormulaVariables(diceFormula, attributeValues);
 
-  if (characterAttribute > 0) {
+  // Se a fórmula já usa {{atributo}}, o bônus já está embutido no dado —
+  // não repete no texto (evita o "{{força}}d20 + 8 (STRENGTH)" enganoso)
+  if (characterAttribute > 0 && !formulaReferencesAttribute(diceFormula, attributeName)) {
     display += ` + ${characterAttribute} (${attributeName})`;
   }
 
@@ -127,7 +181,7 @@ export function formatPresetDisplay(
   }
 
   if (impactFormula) {
-    display += ` → ${impactFormula}`;
+    display += ` → ${previewFormulaVariables(impactFormula, attributeValues)}`;
   }
 
   return display;

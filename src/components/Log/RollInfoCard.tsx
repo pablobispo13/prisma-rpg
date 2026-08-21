@@ -194,7 +194,7 @@ export function RollInfoCard({
                     {impactFormula ?? "dados"} ({impactRolls.join(", ")})
                     {damage! - impactSum > 0 && ` +${damage! - impactSum}`}
                     {" = "}{damage}
-                    {critical && " (com crítico)"}
+                    {critical && " (bônus já com crítico aplicado)"}
                   </Typography>
                 )}
               </Stack>

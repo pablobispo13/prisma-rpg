@@ -26,6 +26,7 @@ type Roll = {
     modifier: number;
     total: number;
     impactRolls: number[];
+    impactFormulaResolved: string | null;
 
     success: boolean;
     critical: boolean;
@@ -157,7 +158,7 @@ export default function RecentRollsScreen() {
                                 damage={roll.damage}
                                 healing={roll.healing}
                                 impactRolls={roll.impactRolls}
-                                impactFormula={roll.preset?.impactFormula}
+                                impactFormula={roll.impactFormulaResolved ?? roll.preset?.impactFormula}
                                 timestamp={roll.createdAt}
                             />
                         ))}

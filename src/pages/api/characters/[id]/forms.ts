@@ -1,7 +1,7 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../../lib/auth";
 import { prisma } from "../../../../lib/prisma";
-import { ActionType, AttributeType, TargetType } from "@prisma/client";
+import { ActionType, TargetType } from "@prisma/client";
 
 /**
  * POST /api/characters/[id]/forms — cria uma forma alternativa (ex: transformação).
@@ -157,7 +157,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         type: ActionType.TRANSFORM,
         targetType: TargetType.SELF,
         diceFormula: "0",
-        attribute: AttributeType.STRENGTH,
+        attribute: "STRENGTH",
         requiresTurn: false,
         allowOutOfCombat: true,
         appliesEffect: false,
@@ -180,7 +180,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           type: ActionType.TRANSFORM,
           targetType: TargetType.SELF,
           diceFormula: "0",
-          attribute: AttributeType.STRENGTH,
+          attribute: "STRENGTH",
           requiresTurn: false,
           allowOutOfCombat: true,
           appliesEffect: false,

@@ -32,13 +32,11 @@ enum ActionType {
   TRANSFORM
 }
 
-enum AttributeType {
-  STRENGTH
-  AGILITY
-  VIGOR
-  INTELLECT
-  PRESENCE
-}
+// Atributos não são mais um enum fixo — ver CustomAttribute e
+// src/lib/attributes.ts. "Atributo" em qualquer campo do schema (attribute,
+// contestAttribute, statAffected) é uma string: um dos 5 nomes fixos em
+// maiúsculo (STRENGTH/AGILITY/VIGOR/INTELLECT/PRESENCE, colunas escalares de
+// Character) ou a `key` (slug minúsculo) de um CustomAttribute da mesa.
 
 enum TargetType {
   SELF
@@ -175,10 +173,11 @@ model Campaign {
   masterId String @db.ObjectId
   master   User   @relation("CampaignMaster", fields: [masterId], references: [id])
 
-  members    CampaignMember[]
-  invites    CampaignInvite[]
-  characters Character[]
-  combats    Combat[]
+  members          CampaignMember[]
+  invites          CampaignInvite[]
+  characters       Character[]
+  combats          Combat[]
+  customAttributes CustomAttribute[]
 }
 
 model CampaignMember {
@@ -210,6 +209,31 @@ model CampaignInvite {
 }
 
 ///////////////////////
+// CUSTOM ATTRIBUTE (por mesa)
+///////////////////////
+
+// Atributo extra definido pelo mestre (ex: Maestria, Sorte), além dos 5 fixos
+// (Character.strength/agility/vigor/intellect/presence). Funciona como um
+// atributo de verdade: pode ser usado em ActionPreset.attribute/
+// contestAttribute, PresetEffect/CharacterEffect.statAffected e nas fórmulas
+// de vida/defesa da mesa — ver src/lib/attributes.ts. `key` é o slug estável
+// (minúsculo, só letras) usado nesses campos e como variável de fórmula;
+// `label` é o nome exibido, editável livremente.
+model CustomAttribute {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  key          String
+  label        String
+  defaultValue Int      @default(0)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  campaignId String   @db.ObjectId
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, key])
+}
+
+///////////////////////
 // CHARACTER
 ///////////////////////
 
@@ -225,6 +249,12 @@ model Character {
   vigor     Int
   intellect Int
   presence  Int
+
+  // Valores dos atributos customizados da mesa: { [CustomAttribute.key]: valor }.
+  // Populado com o defaultValue ao criar o personagem ou quando um atributo
+  // novo é criado na mesa (ver POST /campaigns/[id]/attributes). Chave
+  // ausente = trata como 0 (ver src/lib/attributes.ts::getAttributeValue).
+  customAttributes Json?
 
   baseDefense Int @default(0)
 
@@ -245,6 +275,14 @@ model Character {
   // Permite habilidades tipo "reage 2x por rodada" ou "ataque extra".
   maxReactionsPerRound Int?
   maxAttacksPerRound   Int?
+
+  // Vantagem/desvantagem: modificador aplicado a TODA rolagem deste
+  // personagem (ataque, teste, reação) na rodada corrente, setado pelo
+  // mestre em combate (POST /combat/control, action "setRollModifier").
+  // Limpo automaticamente quando a rodada avança (ver combat/control.ts,
+  // startTurn/endTurn) — não precisa de combatId/turnId aqui porque o reset
+  // é feito de fora, por quem controla o avanço de rodada.
+  pendingRollModifier Int?
 
   // Limite de transformações por dia (configurado na ficha principal).
   // Conta apenas assumir uma forma; voltar à base é livre. Escopado ao
@@ -327,12 +365,12 @@ model ActionPreset {
   // transformada mostra apenas as marcadas e a ficha base as esconde
   transformedOnly  Boolean @default(false)
 
-  attribute AttributeType
+  attribute String
 
   // Resolução da rolagem contra o alvo (DEFENSE = comportamento clássico)
   resolution       ResolutionType @default(DEFENSE)
   // Atributo do alvo no teste resistido (null = mesmo atributo do preset)
-  contestAttribute AttributeType?
+  contestAttribute String?
 
   // Limite de usos por dia (por personagem). null = ilimitado. O "dia"
   // é o Campaign.worldDay; o mestre avança o dia e o limite libera de novo.
@@ -353,7 +391,7 @@ model ActionPreset {
   // Campos legados de efeito único (presets antigos; migrados por
   // scripts/backfill-preset-effects.ts e mantidos como fallback)
   durationTurns Int?
-  statAffected  AttributeType?
+  statAffected  String?
   effectAmount  Int?
   statusApplied StatusType?
   effectType    EffectType?
@@ -392,7 +430,7 @@ model PresetEffect {
   // Fórmula de dado para o valor (ex: "1d6"). DAMAGE_TAKEN_BONUS rola a cada
   // ataque recebido; demais tipos rolam uma vez na aplicação.
   valueFormula  String?
-  statAffected  AttributeType?
+  statAffected  String?
   statusApplied StatusType?
   durationTurns Int?
 
@@ -470,12 +508,24 @@ model RollResult {
 
   targetIds String[] @db.ObjectId
 
+  // Fórmula já com {{atributo}} resolvido pro valor no momento da rolagem
+  // (ex: "8d20", não "{{força}}d20") — é o que fica gravado no histórico,
+  // pra sempre exibir o dado de verdade usado, mesmo que o atributo do
+  // personagem mude depois (ver src/lib/attributes.ts::substituteAttributeVariables)
   diceRolled String
   rolls      Int[]
   modifier   Int
   total      Int
+  // Dados de "N#dM" (mantém-o-maior) rolados mas não contados no total —
+  // só para exibir o breakdown completo da rolagem (ver src/lib/dice.ts)
+  droppedRolls Int[] @default([])
 
-  impactRolls Int[] @default([]) // Rolls do dano/cura (ex: [3, 2, 1])
+  impactRolls        Int[] @default([]) // Rolls do dano/cura (ex: [3, 2, 1])
+  impactDroppedRolls  Int[] @default([]) // Idem droppedRolls, para o impactFormula
+  // Mesma ideia de diceRolled, mas pro impactFormula (ex: "1d6+8") — usado
+  // pela UI no lugar do preset.impactFormula "cru" (que pode ter mudado ou
+  // ter {{atributo}} não resolvido)
+  impactFormulaResolved String?
 
   success  Boolean? // Será definido após reação do alvo
   critical Boolean
@@ -660,12 +710,12 @@ model CharacterEffect {
   value          Int
   // Fórmula rolada a cada gatilho (ex: DAMAGE_TAKEN_BONUS "1d6" por ataque)
   valueFormula   String?
-  statAffected   AttributeType?
+  statAffected   String?
   statusApplied  StatusType?
 
   // Estado do reteste por rodada (efeitos resistidos)
-  retestEachRound  Boolean        @default(false)
+  retestEachRound  Boolean @default(false)
   contestValue     Int? // total atual a bater; decai contestDecay por rodada
   contestDecay     Int?
-  contestAttribute AttributeType?
+  contestAttribute String?
 }

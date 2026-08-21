@@ -48,6 +48,7 @@ const BLANK = {
   vigor: 0,
   intellect: 0,
   presence: 0,
+  customAttributes: {} as Record<string, string | number>,
   maxReactionsPerRound: "" as string | number,
   maxAttacksPerRound: "" as string | number,
   maxTransformationsPerDay: "" as string | number,
@@ -77,6 +78,10 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
 
   useEffect(() => {
     if (character && open) {
+      const customAttributes: Record<string, string | number> = {};
+      for (const attr of activeCampaign?.customAttributes ?? []) {
+        customAttributes[attr.key] = character.customAttributes?.[attr.key] ?? attr.defaultValue;
+      }
       setForm({
         name: character.name,
         life: character.life,
@@ -91,6 +96,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         vigor: character.vigor,
         intellect: character.intellect,
         presence: character.presence,
+        customAttributes,
         maxReactionsPerRound: character.maxReactionsPerRound ?? "",
         maxAttacksPerRound: character.maxAttacksPerRound ?? "",
         maxTransformationsPerDay: character.maxTransformationsPerDay ?? "",
@@ -99,10 +105,13 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         abilitySanityCostOverride: character.abilitySanityCostOverride ?? "",
       });
     }
-  }, [character, open]);
+  }, [character, open, activeCampaign]);
 
   const update = (key: string, value: number | string | boolean) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  const updateCustomAttribute = (key: string, value: string) =>
+    setForm((prev) => ({ ...prev, customAttributes: { ...prev.customAttributes, [key]: value } }));
 
   const handleClose = () => {
     setForm(BLANK);
@@ -115,6 +124,9 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
     vigor: Number(form.vigor),
     intellect: Number(form.intellect),
     presence: Number(form.presence),
+    ...Object.fromEntries(
+      Object.entries(form.customAttributes).map(([k, v]) => [k, Number(v) || 0])
+    ),
   });
 
   const autoCalculateMaxLife = () => {
@@ -146,6 +158,9 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
         vigor: Number(form.vigor),
         intellect: Number(form.intellect),
         presence: Number(form.presence),
+        customAttributes: Object.fromEntries(
+          Object.entries(form.customAttributes).map(([k, v]) => [k, Number(v) || 0])
+        ),
         ...(isMasterOfTable
           ? {
               maxReactionsPerRound:
@@ -312,6 +327,21 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
               onChange={(e) => update("presence", e.target.value)}
             />
           </Stack>
+
+          {/* Atributos customizados da mesa */}
+          {!!activeCampaign?.customAttributes.length && (
+            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+              {activeCampaign.customAttributes.map((attr) => (
+                <TextField
+                  key={attr.id}
+                  label={attr.label}
+                  type="number"
+                  value={form.customAttributes[attr.key] ?? attr.defaultValue}
+                  onChange={(e) => updateCustomAttribute(attr.key, e.target.value)}
+                />
+              ))}
+            </Stack>
+          )}
 
           {/* Limites por rodada — apenas mestre/admin */}
           {isMasterOfTable && (

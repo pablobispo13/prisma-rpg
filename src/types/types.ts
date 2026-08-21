@@ -29,10 +29,16 @@ export type Character = {
     vigor: number;
     intellect: number;
     presence: number;
+    // Atributos customizados da mesa (CustomAttribute.key -> valor)
+    customAttributes?: Record<string, number> | null;
 
     // Overrides dos limites da mesa (null = usa o da campanha)
     maxReactionsPerRound?: number | null;
     maxAttacksPerRound?: number | null;
+
+    // Vantagem/desvantagem pendente — aplica e some na próxima rolagem
+    // (setado pelo mestre em combate, ver POST /combat/control setRollModifier)
+    pendingRollModifier?: number | null;
     maxTransformationsPerDay?: number | null;
 
     // Formas alternativas (transformações)
@@ -142,6 +148,7 @@ export type Roll = {
     total: number;
     modifier: number;
     rolls: number[];
+    droppedRolls?: number[];
     damage?: number | null;
     healing?: number | null;
     sucess?: boolean | null;
@@ -149,6 +156,10 @@ export type Roll = {
     critical?: boolean | null;
     diceRolled?: string;
     impactRolls?: number[];
+    impactDroppedRolls?: number[];
+    // Fórmula de impacto já com {{atributo}} resolvido no momento da rolagem
+    // (ex: "1d6+8") — preferir a esta em vez de preset.impactFormula "cru"
+    impactFormulaResolved?: string | null;
     createdAt?: string;
     preset?: ActionPresetType | null;
     reactionType?: "DODGE" | "COUNTER_ATTACK" | "BLOCK" | "SKIP";
@@ -171,6 +182,17 @@ export const Character_Attributes = [
     { key: "intellect", label: "Intelecto" },
     { key: "presence", label: "Presença" },
 ] as const;
+
+// Atributo customizado da mesa (mestre define em Minhas Mesas > Editar mesa).
+// `key` é o slug estável (usado em ActionPreset.attribute etc); `label` é o
+// nome exibido, editável livremente.
+export type CustomAttributeType = {
+    id: string;
+    key: string;
+    label: string;
+    defaultValue: number;
+    sortOrder: number;
+};
 
 export const getLifePercent = (life: number, maxLife: number) =>
     Math.max(0, Math.min(100, (life / maxLife) * 100));

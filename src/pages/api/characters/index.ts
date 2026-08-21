@@ -3,6 +3,7 @@ import { withCampaign, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
 import { Prisma } from "@prisma/client";
 import { hideCharacterSanity } from "../../../lib/campaignAccess";
+import { sanitizeCustomAttributeValues } from "../../../lib/customAttributes";
 
 // Includes compartilhados entre a listagem e a substituição por forma ativa
 const masterInclude = {
@@ -145,7 +146,22 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       dodgePresetId,
       blockPresetId,
       counterAttackPresetId,
+      customAttributes,
     } = req.body;
+
+    // Atributos customizados da mesa: começam no defaultValue configurado
+    // pelo mestre, sobrescrito por valores enviados no body (se houver)
+    const customAttributeDefs = await prisma.customAttribute.findMany({
+      where: { campaignId },
+      select: { key: true, defaultValue: true },
+    });
+    const sanitizedCustom = sanitizeCustomAttributeValues(
+      customAttributes,
+      new Set(customAttributeDefs.map((a) => a.key))
+    );
+    const customAttributesValue = Object.fromEntries(
+      customAttributeDefs.map((a) => [a.key, sanitizedCustom[a.key] ?? a.defaultValue])
+    );
 
     const character = await prisma.character.create({
       data: {
@@ -158,6 +174,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         vigor: vigor ?? 10,
         intellect: intellect ?? 10,
         presence: presence ?? 10,
+        customAttributes: customAttributesValue,
         baseDefense: baseDefense ?? 0,
         history: history ?? "",
         notes: notes ?? "",

@@ -3,7 +3,7 @@ import { prisma } from "../../../lib/prisma";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { rollDice } from "../../../lib/dice";
 import { LogType, Prisma } from "@prisma/client";
-import { getAttributeValue } from "../../../lib/attributes";
+import { getAttributeValue, substituteAttributeVariables, formulaReferencesAttribute } from "../../../lib/attributes";
 import { notifyCombatUpdate } from "../../../lib/pusher";
 
 type Tx = Prisma.TransactionClient;
@@ -18,6 +18,15 @@ const REACTION_PT: Record<string, string> = {
     DODGE: "esquivar",
     BLOCK: "bloquear",
 };
+
+// Sufixo de log para o modificador de vantagem/desvantagem (Character.pendingRollModifier)
+// quando consumido numa rolagem — ex: " +5 (vantagem)" ou " -3 (desvantagem)"
+function rollModifierSuffix(mod: number): string {
+    if (!mod) return "";
+    const label = mod > 0 ? "vantagem" : "desvantagem";
+    const sign = mod > 0 ? "+" : "";
+    return ` ${sign}${mod} (${label})`;
+}
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (req.method !== "POST") {
@@ -241,13 +250,20 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     /* =========================
        ROLL E RESOLUÇÃO (cálculo puro, fora da transação)
     ========================= */
-    const reactionRollData = rollDice(preset.diceFormula);
-    const attributeValue = getAttributeValue(target, preset.attribute);
-    const reactionModifier = attributeValue + (preset.modifier ?? 0);
+    // Fórmula já com {{atributo}} resolvido (ex: "8d20") — o que rola de
+    // verdade e o que fica gravado no histórico (RollResult.diceRolled)
+    const resolvedDiceFormula = substituteAttributeVariables(preset.diceFormula, target);
+    const reactionRollData = rollDice(resolvedDiceFormula);
+    // Não soma o atributo de novo se o dado já usa {{atributo}} (evita dobrar)
+    const diceUsesAttribute = formulaReferencesAttribute(preset.diceFormula, preset.attribute);
+    const attributeValue = diceUsesAttribute ? 0 : getAttributeValue(target, preset.attribute);
+    const pendingMod = target.pendingRollModifier ?? 0;
+    const reactionModifier = attributeValue + (preset.modifier ?? 0) + pendingMod;
     const reactionTotal = reactionRollData.total + reactionModifier;
     let reactionSuccess = false;
     let finalMessage = "";
     let counterDamage = 0;
+    let resolvedImpactFormula: string | null = null;
 
     if (reactionType === "COUNTER_ATTACK") {
         reactionSuccess = reactionTotal >= attackRoll.total;
@@ -256,8 +272,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (!preset.impactFormula) {
                 return res.status(400).json({ message: "Contra-ataque sem impactFormula configurado" });
             }
-            const impactRoll = rollDice(preset.impactFormula);
-            counterDamage = impactRoll.total + (target.strength || 0);
+            resolvedImpactFormula = substituteAttributeVariables(preset.impactFormula, target);
+            const impactRoll = rollDice(resolvedImpactFormula);
+            // Contra-ataque soma Força por padrão, exceto se a fórmula já usa {{força}}
+            const impactUsesStrength = formulaReferencesAttribute(preset.impactFormula, "STRENGTH");
+            counterDamage = impactRoll.total + (impactUsesStrength ? 0 : (target.strength || 0));
             finalMessage = `${target.name} contra-atacou com sucesso (${reactionTotal} vs ${attackRoll.total}) e causou ${counterDamage} de dano em ${attacker.name}`;
         } else {
             finalMessage = `${target.name} falhou no contra-ataque (${reactionTotal} vs ${attackRoll.total}) e sofreu ${damage} de dano`;
@@ -272,6 +291,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             finalMessage = `${target.name} conseguiu ${actionPt} (${reactionTotal} vs ${attackRoll.total}) e evitou o dano`;
         }
     }
+    finalMessage += rollModifierSuffix(pendingMod);
 
     /* =========================
        PERSISTÊNCIA ATÔMICA
@@ -296,10 +316,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 combatId: attackRoll.combatId,
                 turnId,
                 targetIds: [attacker.id],
-                diceRolled: preset.diceFormula,
+                diceRolled: resolvedDiceFormula,
                 rolls: reactionRollData.rolls,
+                droppedRolls: reactionRollData.droppedRolls,
                 modifier: reactionModifier,
                 total: reactionTotal,
+                impactFormulaResolved: resolvedImpactFormula,
                 success: reactionSuccess,
                 critical: false,
             },

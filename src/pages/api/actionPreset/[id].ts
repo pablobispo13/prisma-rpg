@@ -2,8 +2,8 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { ActionType, AttributeType, EffectType, TargetType, ResolutionType, EffectSelectionMode } from "@prisma/client";
-import { sanitizePresetEffects, normalizeUsesPerDay } from "./index";
+import { ActionType, EffectType, TargetType, ResolutionType, EffectSelectionMode } from "@prisma/client";
+import { sanitizePresetEffects, normalizeUsesPerDay, validateAttributeKeys } from "./index";
 
 
 async function handler(
@@ -108,6 +108,17 @@ async function handler(
       return;
     }
 
+    const attributeError = await validateAttributeKeys(character.campaignId, [
+      attribute,
+      contestAttribute,
+      statAffected,
+      ...(effectRows ? effectRows.map((r) => r.statAffected) : []),
+    ]);
+    if (attributeError) {
+      res.status(400).json({ message: attributeError });
+      return;
+    }
+
     if (effectRows) {
       await prisma.presetEffect.deleteMany({ where: { presetId: id } });
     }
@@ -137,7 +148,7 @@ async function handler(
       where: { id },
       data: {
         resolution: resolution ? (resolution as ResolutionType) : undefined,
-        contestAttribute: contestAttribute !== undefined ? (contestAttribute as AttributeType | null) : undefined,
+        contestAttribute: contestAttribute !== undefined ? (contestAttribute ? String(contestAttribute) : null) : undefined,
         effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
         usesPerDay: usesPerDayValue,
         targetFormId: targetFormIdValue,
@@ -157,7 +168,7 @@ async function handler(
         appliesEffect: appliesEffect ?? undefined,
         isAreaEffect: isAreaEffect ?? undefined,
         transformedOnly: transformedOnly ?? undefined,
-        attribute: attribute ? (attribute as AttributeType) : undefined,
+        attribute: attribute ? String(attribute) : undefined,
         durationTurns: durationTurns ?? undefined,
         statAffected: statAffected ?? undefined,
         effectAmount: effectAmount ?? undefined,

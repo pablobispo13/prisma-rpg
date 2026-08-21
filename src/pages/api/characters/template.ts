@@ -43,10 +43,19 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
   }
 
+  const customAttributeDefs = await prisma.customAttribute.findMany({
+    where: { campaignId },
+    orderBy: { sortOrder: "asc" },
+  });
+  const customAttributesDefault = Object.fromEntries(
+    customAttributeDefs.map((a) => [a.key, a.defaultValue])
+  );
+
   const def = ARCHETYPES[archetype as Archetype];
   const baseData = {
     name: name?.trim() || "Novo Personagem",
     ...def.defaults,
+    customAttributes: customAttributesDefault,
     ...(overrides ?? {}),
     xp: 0,
     history: "",
@@ -55,7 +64,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     campaignId,
   };
 
-  const seeds = presetSeedsFor(archetype as Archetype);
+  const seeds = presetSeedsFor(
+    archetype as Archetype,
+    customAttributeDefs.map((a) => ({ key: a.key, label: a.label }))
+  );
 
   // Cria character e presets em transação
   const result = await prisma.$transaction(async (tx) => {

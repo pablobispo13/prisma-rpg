@@ -12,7 +12,7 @@
  *
  * Uso: npx tsx scripts/backfill-transform-presets.ts
  */
-import { PrismaClient, ActionType, AttributeType, TargetType } from "@prisma/client";
+import { PrismaClient, ActionType, TargetType } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -43,7 +43,7 @@ async function main() {
           type: ActionType.TRANSFORM,
           targetType: TargetType.SELF,
           diceFormula: "0",
-          attribute: AttributeType.STRENGTH,
+          attribute: "STRENGTH",
           requiresTurn: false,
           allowOutOfCombat: true,
           appliesEffect: false,
@@ -68,7 +68,7 @@ async function main() {
           type: ActionType.TRANSFORM,
           targetType: TargetType.SELF,
           diceFormula: "0",
-          attribute: AttributeType.STRENGTH,
+          attribute: "STRENGTH",
           requiresTurn: false,
           allowOutOfCombat: true,
           appliesEffect: false,

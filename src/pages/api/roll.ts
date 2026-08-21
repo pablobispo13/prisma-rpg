@@ -2,14 +2,23 @@ import type { NextApiResponse } from "next";
 import { prisma } from "../../lib/prisma";
 import { authenticate, AuthenticatedRequest } from "../../lib/auth";
 import { rollDice } from "../../lib/dice";
-import { LogType, EffectType, ActionType, ResolutionType, AttributeType, StatusType } from "@prisma/client";
-import { getAttributeValue } from "../../lib/attributes";
+import { LogType, EffectType, ActionType, ResolutionType, StatusType } from "@prisma/client";
+import { getAttributeValue, substituteAttributeVariables, formulaReferencesAttribute } from "../../lib/attributes";
 import { notifyCombatUpdate } from "../../lib/pusher";
 import { canActOnCharacter } from "../../lib/campaignAccess";
 
 function joinNames(names: string[]): string {
     if (names.length === 1) return names[0];
     return names.slice(0, -1).join(", ") + " e " + names[names.length - 1];
+}
+
+// Sufixo de log para o modificador de vantagem/desvantagem (Character.pendingRollModifier)
+// quando consumido numa rolagem — ex: " +5 (vantagem)" ou " -3 (desvantagem)"
+function rollModifierSuffix(mod: number): string {
+    if (!mod) return "";
+    const label = mod > 0 ? "vantagem" : "desvantagem";
+    const sign = mod > 0 ? "+" : "";
+    return ` ${sign}${mod} (${label})`;
 }
 
 // Efeito "achatado" pronto para aplicar: vem das linhas de PresetEffect do
@@ -21,7 +30,7 @@ type EffectSpec = {
     target: "SELF" | "TARGETS";
     value: number | null;
     valueFormula: string | null;
-    statAffected: AttributeType | null;
+    statAffected: string | null;
     statusApplied: StatusType | null;
     durationTurns: number | null;
     retestEachRound: boolean;
@@ -29,6 +38,12 @@ type EffectSpec = {
 };
 
 function buildRollLog(charName: string, presetName: string, presetType: string, hitNames: string[], missNames: string[]): string {
+    // Sem alvo real (ex: teste livre "fora de combate", tipo testar Força
+    // contra algo do cenário) — a rolagem aconteceu, mas não tinha em quem
+    // aplicar. Não é falha nem acerto, só não teve destinatário.
+    if (hitNames.length === 0 && missNames.length === 0) {
+        return `${charName} usou ${presetName}`;
+    }
     if (presetType !== ActionType.ATTACK) {
         return `${charName} usou ${presetName} em ${joinNames([...hitNames, ...missNames])}`;
     }
@@ -167,7 +182,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
     if (diceFormula && !actionPresetId) {
 
-        const dice = rollDice(diceFormula);
+        const resolvedFormula = substituteAttributeVariables(diceFormula, character);
+        const dice = rollDice(resolvedFormula);
+        const pendingMod = character.pendingRollModifier ?? 0;
+        const total = dice.total + pendingMod;
 
         const resolvedTargetIds =
             targetIds.length ? targetIds : [character.id];
@@ -180,10 +198,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     combatId: combatId ?? null,
                     turnId: turnId ?? null,
                     targetIds: resolvedTargetIds,
-                    diceRolled: diceFormula,
+                    diceRolled: resolvedFormula,
                     rolls: dice.rolls,
-                    modifier: 0,
-                    total: dice.total,
+                    droppedRolls: dice.droppedRolls,
+                    modifier: pendingMod,
+                    total,
                     critical: false,
                     success: null,
                     pendingReaction: false,
@@ -197,7 +216,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     type: LogType.ROLL,
                     message:
                         logMessage ??
-                        `${character.name} rolou ${diceFormula} (${dice.rolls.join(", ")}) = ${dice.total}`,
+                        `${character.name} rolou ${resolvedFormula} (${dice.rolls.join(", ")})${rollModifierSuffix(pendingMod)} = ${total}`,
                     characterId: character.id,
                     rollId: created.id,
                     combatId: combatId ?? null,
@@ -428,19 +447,38 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         .filter(e => e.type === "ROLL_BONUS" || e.type === "ROLL_PENALTY")
         .reduce((sum, e) => sum + (e.type === "ROLL_PENALTY" ? -Math.abs(e.value) : e.value), 0);
 
-    const attackRoll = rollDice(preset.diceFormula);
+    // Vantagem/desvantagem setada pelo mestre (Character.pendingRollModifier) —
+    // vale para toda rolagem deste personagem na rodada corrente; some sozinha
+    // quando a rodada avança (ver POST /combat/control, reset de rodada)
+    const pendingMod = character.pendingRollModifier ?? 0;
+
+    // Fórmula já com {{atributo}} resolvido pro valor atual (ex: "8d20") —
+    // é o que rola de verdade e o que fica gravado no histórico (RollResult.
+    // diceRolled), em vez do texto literal "{{força}}d20" que ninguém entende
+    const resolvedDiceFormula = substituteAttributeVariables(preset.diceFormula, character);
+    const attackRoll = rollDice(resolvedDiceFormula);
+
+    // Se o dado de ataque já usa {{atributo}} (ex: "{{força}}d20"), o valor
+    // base do atributo já está embutido no dado rolado — somar effectiveAttribute
+    // de novo contaria ele em dobro. Ainda soma effectBonus (STAT_BUFF/DEBUFF
+    // ativos), já que esses não fazem parte do texto digitado pelo mestre.
+    const diceUsesAttribute = formulaReferencesAttribute(preset.diceFormula, preset.attribute);
+    const attackAttributeBonus = diceUsesAttribute ? effectBonus : effectiveAttribute;
 
     const flatModifier = preset.modifier ?? 0;
-    const attackTotal = attackRoll.total + effectiveAttribute + flatModifier + rollModifier;
+    const attackTotal = attackRoll.total + attackAttributeBonus + flatModifier + rollModifier + pendingMod;
 
     const isCritical = attackRoll.rolls.some(
         r => r >= (preset.critThreshold ?? 999)
     );
 
+    // SELF sempre mira em quem rolou. Com alvo (ENEMY/ALLY/MULTIPLE) mas sem
+    // targetIds — típico de ação "fora de combate" usada como teste livre
+    // (ex: testar Força contra um objeto do cenário, sem personagem real
+    // envolvido) — a rolagem acontece normalmente (total, crítico) mas não
+    // aplica dano/efeito a ninguém: sem alvo real, não há em quem aplicar.
     const resolvedTargetIds =
-        preset.targetType === "SELF" || targetIds.length === 0
-            ? [character.id]
-            : targetIds;
+        preset.targetType === "SELF" ? [character.id] : targetIds;
 
 
     /* =====================================================
@@ -449,14 +487,24 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
        Cálculos puros (dados rolados, totais) acontecem antes para acelerar a tx.
     ===================================================== */
 
-    // Dano é rolado UMA vez e aplicado a todos os alvos
+    // Dano é rolado UMA vez e aplicado a todos os alvos (ou a nenhum, se a
+    // ação não tiver alvo real — ver resolvedTargetIds acima). O valor
+    // rolado aparece no breakdown independente de ter sido aplicado.
+    const isHealType = preset.type === ActionType.HEAL || preset.type === ActionType.SUPPORT;
     let impactTotal: number | null = null;
     let impactRolls: number[] = [];
+    let impactDroppedRolls: number[] = [];
+    let resolvedImpactFormula: string | null = null;
 
     if (preset.impactFormula) {
-        const impactRoll = rollDice(preset.impactFormula);
+        resolvedImpactFormula = substituteAttributeVariables(preset.impactFormula, character);
+        const impactRoll = rollDice(resolvedImpactFormula);
         impactRolls = impactRoll.rolls;
-        impactTotal = impactRoll.total + effectiveAttribute;
+        impactDroppedRolls = impactRoll.droppedRolls;
+        // Mesmo raciocínio do dado de ataque: não soma o atributo de novo se
+        // a fórmula de impacto já usa {{atributo}}.
+        const impactUsesAttribute = formulaReferencesAttribute(preset.impactFormula, preset.attribute);
+        impactTotal = impactRoll.total + (impactUsesAttribute ? effectBonus : effectiveAttribute);
         if (isCritical && preset.critMultiplier) {
             impactTotal = Math.floor(impactTotal * preset.critMultiplier);
         }
@@ -493,11 +541,17 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 combatId: combatId ?? null,
                 turnId: turnId ?? null,
                 targetIds: resolvedTargetIds,
-                diceRolled: preset.diceFormula,
+                diceRolled: resolvedDiceFormula,
                 rolls: attackRoll.rolls,
-                modifier: effectiveAttribute + flatModifier,
+                droppedRolls: attackRoll.droppedRolls,
+                modifier: attackAttributeBonus + flatModifier + pendingMod,
                 total: attackTotal,
                 critical: isCritical,
+                impactFormulaResolved: resolvedImpactFormula,
+                impactRolls: impactRolls.length > 0 ? impactRolls : undefined,
+                impactDroppedRolls: impactDroppedRolls.length > 0 ? impactDroppedRolls : undefined,
+                damage: preset.type === ActionType.ATTACK ? impactTotal : null,
+                healing: isHealType ? impactTotal : null,
                 success: null,
                 pendingReaction: false,
                 reacted: false,
@@ -520,7 +574,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (spec.effectType === EffectType.SANITY_DRAIN) {
                 // Sanidade não rastreada neste personagem (campo null): sem efeito
                 if (recipient.sanity == null) return;
-                const amount = spec.valueFormula ? rollDice(spec.valueFormula).total : (spec.value ?? 0);
+                const amount = spec.valueFormula ? rollDice(substituteAttributeVariables(spec.valueFormula, character)).total : (spec.value ?? 0);
                 if (amount <= 0) return;
 
                 const newSanity = Math.max(0, recipient.sanity - amount);
@@ -546,7 +600,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             }
 
             if (spec.effectType === EffectType.TEMP_HP) {
-                const amount = spec.valueFormula ? rollDice(spec.valueFormula).total : (spec.value ?? 0);
+                const amount = spec.valueFormula ? rollDice(substituteAttributeVariables(spec.valueFormula, character)).total : (spec.value ?? 0);
                 if (amount > 0 && recipientParticipant) {
                     const currentTempHp = recipientParticipant.tempHp ?? 0;
                     await tx.combatParticipant.update({
@@ -574,7 +628,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             // os demais tipos rolam a fórmula uma única vez, agora
             const keepFormula = spec.effectType === EffectType.DAMAGE_TAKEN_BONUS;
             const value = !keepFormula && spec.valueFormula
-                ? rollDice(spec.valueFormula).total
+                ? rollDice(substituteAttributeVariables(spec.valueFormula, character)).total
                 : (spec.value ?? 0);
             const needsStat = spec.effectType === EffectType.STAT_BUFF || spec.effectType === EffectType.STAT_DEBUFF;
             const isContested = preset.resolution === ResolutionType.CONTESTED && spec.retestEachRound;
@@ -728,7 +782,6 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 });
             }
 
-            const isHealType = preset.type === ActionType.HEAL || preset.type === ActionType.SUPPORT;
             let afterLife = beforeLife;
 
             // Alvo "marcado" (DAMAGE_TAKEN_BONUS): recebe dano extra de qualquer
@@ -737,6 +790,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             if (impactTotal && preset.type === ActionType.ATTACK) {
                 let markBonus = 0;
                 for (const mark of (target.statusEffects ?? []).filter((e) => e.type === EffectType.DAMAGE_TAKEN_BONUS)) {
+                    // Sem substituição de {{atributo}} aqui: a marca foi aplicada por
+                    // quem quer que a tenha conjurado (mark.sourceCharacterId), não
+                    // necessariamente o atacante atual — não temos esse personagem
+                    // carregado neste ponto do loop.
                     markBonus += mark.valueFormula ? rollDice(mark.valueFormula).total : Math.abs(mark.value);
                 }
                 if (markBonus > 0) {
@@ -830,9 +887,6 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 data: {
                     success: true,
                     pendingReaction: shouldOpenReaction,
-                    impactRolls: impactRolls.length > 0 ? impactRolls : undefined,
-                    damage: preset.type === ActionType.ATTACK ? impactTotal : null,
-                    healing: isHealType ? impactTotal : null,
                 },
             });
 
@@ -864,7 +918,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         await tx.actionLog.create({
             data: {
                 type: LogType.ROLL,
-                message: buildRollLog(character.name, preset.name, preset.type as string, hitNames, missNames),
+                message: buildRollLog(character.name, preset.name, preset.type as string, hitNames, missNames) + rollModifierSuffix(pendingMod),
                 characterId: character.id,
                 rollId: created.id,
                 combatId: combatId ?? null,

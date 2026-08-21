@@ -410,10 +410,13 @@ export function CharacterSheet({
                 ) : actionPresets.length ? (
                   <>
                     {actionPresets.map((preset) => {
-                      const attributeKey =
-                        preset.attribute.toLowerCase() as keyof Character;
-                      const attributeValue =
-                        (character[attributeKey] as number) || 0;
+                      // Atributo fixo é campo direto do personagem; customizado
+                      // vem de customAttributes (ver Minhas Mesas > Atributos customizados)
+                      const attributeKey = preset.attribute.toLowerCase();
+                      const isFixedAttr = ["strength", "agility", "vigor", "intellect", "presence"].includes(attributeKey);
+                      const attributeValue = isFixedAttr
+                        ? (character[attributeKey as keyof Character] as number) || 0
+                        : character.customAttributes?.[attributeKey] ?? 0;
                       const roller =
                         preset.type !== "REACT" && preset.type !== "SKILL" && presetUsable(preset) ? (
                           <Roller
@@ -426,6 +429,7 @@ export function CharacterSheet({
                         <div key={preset.id}>
                           <PresetCard
                             preset={preset}
+                            character={character}
                             characterAttribute={attributeValue}
                             canEdit={canEdit}
                             onEdit={() => {

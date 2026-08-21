@@ -1,5 +1,6 @@
 import { Stack, Chip, Skeleton } from "@mui/material";
 import { Character, Character_Attributes } from "../../types/types";
+import { useCampaign } from "../../context/CampaignContext";
 type Props = {
     character: Character;
     compact?: boolean;
@@ -7,6 +8,9 @@ type Props = {
 };
 
 export function AttributesChips({ character, compact, loading = false }: Props) {
+    const { activeCampaign } = useCampaign();
+    const customAttributes = activeCampaign?.customAttributes ?? [];
+
     return (
         <Stack direction="row" spacing={0.5} flexWrap="wrap">
             {Character_Attributes.map(({ key, label }) => <>{
@@ -18,6 +22,13 @@ export function AttributesChips({ character, compact, loading = false }: Props) 
                     />
             }</>
             )}
+            {!loading && customAttributes.map((attr) => (
+                <Chip
+                    key={attr.id}
+                    size={compact ? "small" : "medium"}
+                    label={`${attr.label}: ${character.customAttributes?.[attr.key] ?? 0}`}
+                />
+            ))}
         </Stack>
     );
 }

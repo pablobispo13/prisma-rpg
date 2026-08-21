@@ -1,4 +1,5 @@
-import { ActionType, AttributeType, TargetType } from "@prisma/client";
+import { ActionType, TargetType } from "@prisma/client";
+import { attributeTestPresetSeed } from "./customAttributes";
 
 /**
  * Arquétipos de personagem.
@@ -81,7 +82,7 @@ export const ARCHETYPES: Record<Archetype, ArchetypeDef> = {
   },
 };
 
-const ATTRIBUTE_LABEL: Record<AttributeType, string> = {
+const ATTRIBUTE_LABEL: Record<string, string> = {
   STRENGTH: "Força",
   AGILITY: "Agilidade",
   VIGOR: "Vigor",
@@ -102,33 +103,26 @@ type PresetSeed = {
   requiresTurn: boolean;
   allowOutOfCombat: boolean;
   appliesEffect: boolean;
-  attribute: AttributeType;
+  attribute: string;
 };
 
 /**
- * Gera os 5 testes de atributo + reações conforme o arquétipo.
- * Retorna lista de "seeds" sem characterId (definido no momento da criação no DB).
+ * Gera os 5 testes de atributo fixo + 1 por atributo customizado da mesa +
+ * reações conforme o arquétipo. Retorna lista de "seeds" sem characterId
+ * (definido no momento da criação no DB).
  */
-export function presetSeedsFor(archetype: Archetype): PresetSeed[] {
+export function presetSeedsFor(
+  archetype: Archetype,
+  customAttributes: { key: string; label: string }[] = []
+): PresetSeed[] {
   const seeds: PresetSeed[] = [];
 
-  // Testes de atributo (sempre)
-  for (const attr of Object.keys(ATTRIBUTE_LABEL) as AttributeType[]) {
-    const label = ATTRIBUTE_LABEL[attr];
-    seeds.push({
-      name: `Teste ${label}`,
-      description: `Teste de ${label}`,
-      type: "TEST",
-      targetType: "SELF",
-      diceFormula: "1d20",
-      modifier: 0,
-      critThreshold: 20,
-      critMultiplier: null,
-      requiresTurn: false,
-      allowOutOfCombat: true,
-      appliesEffect: false,
-      attribute: attr,
-    });
+  // Testes de atributo (sempre — 5 fixos + os customizados da mesa)
+  for (const attr of Object.keys(ATTRIBUTE_LABEL)) {
+    seeds.push(attributeTestPresetSeed(attr, ATTRIBUTE_LABEL[attr]) as PresetSeed);
+  }
+  for (const { key, label } of customAttributes) {
+    seeds.push(attributeTestPresetSeed(key, label) as PresetSeed);
   }
 
   const { reactions } = ARCHETYPES[archetype];

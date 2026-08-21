@@ -29,6 +29,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           include: { user: { select: { id: true, username: true, role: true } } },
         },
         invites: { where: { active: true } },
+        customAttributes: { orderBy: { sortOrder: "asc" } },
         _count: { select: { characters: true, combats: true } },
       },
     });
@@ -51,7 +52,16 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     if (archived === true) data.archivedAt = new Date();
     if (archived === false) data.archivedAt = null;
 
-    // Fórmulas de atributos derivados: string vazia/null volta pra fórmula padrão
+    // Fórmulas de atributos derivados: string vazia/null volta pra fórmula padrão.
+    // Além dos 5 fixos, aceitam a key de qualquer atributo customizado da mesa.
+    let customAttributeKeys: string[] = [];
+    if (defenseFormula !== undefined || maxLifeFormula !== undefined) {
+      const defs = await prisma.customAttribute.findMany({
+        where: { campaignId: id },
+        select: { key: true },
+      });
+      customAttributeKeys = defs.map((d) => d.key);
+    }
     for (const [field, value] of [
       ["defenseFormula", defenseFormula],
       ["maxLifeFormula", maxLifeFormula],
@@ -65,7 +75,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         res.status(400).json({ message: `${field} deve ser uma string` });
         return;
       }
-      const error = validateFormula(value);
+      const error = validateFormula(value, customAttributeKeys);
       if (error) {
         res.status(400).json({ message: `Fórmula inválida (${field === "defenseFormula" ? "defesa" : "vida máxima"}): ${error}` });
         return;

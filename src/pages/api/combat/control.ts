@@ -293,11 +293,17 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 }
                 await prisma.combat.update({ where: { id: combatId }, data: { currentTurnIndex: nextIndex, round: nextRound } });
 
-                // Nova rodada: zera contadores de ataques/reações de todos
+                // Nova rodada: zera contadores de ataques/reações de todos e
+                // limpa vantagem/desvantagem pendente (vale só pela rodada em
+                // que foi setada — ver Character.pendingRollModifier)
                 if (nextRound > combat.round) {
                     await prisma.combatParticipant.updateMany({
                         where: { combatId },
                         data: { attacksUsed: 0, reactionsUsed: 0 },
+                    });
+                    await prisma.character.updateMany({
+                        where: { id: { in: combat.participants.map((p) => p.characterId) } },
+                        data: { pendingRollModifier: null },
                     });
                 }
 
@@ -374,11 +380,17 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 data: { currentTurnIndex: nextIndex, round: nextRound, hpSnapshots: updatedSnapshots }
             });
 
-            // Nova rodada: zera contadores de ataques/reações de todos
+            // Nova rodada: zera contadores de ataques/reações de todos e
+            // limpa vantagem/desvantagem pendente (vale só pela rodada em
+            // que foi setada — ver Character.pendingRollModifier)
             if (nextRound > combat.round) {
                 await prisma.combatParticipant.updateMany({
                     where: { combatId },
                     data: { attacksUsed: 0, reactionsUsed: 0 },
+                });
+                await prisma.character.updateMany({
+                    where: { id: { in: combat.participants.map((p) => p.characterId) } },
+                    data: { pendingRollModifier: null },
                 });
             }
 
@@ -467,6 +479,47 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             });
             if (combatId) notifyCombatUpdate(combatId);
             return res.status(200).json({ sanity: clampedSanity });
+        }
+
+        // Vantagem/desvantagem: modificador aplicado a TODA rolagem do
+        // personagem (ataque, teste, reação) na rodada corrente — some
+        // sozinho quando a rodada avança (ver reset de rodada acima, em
+        // startTurn/endTurn). value null/"" limpa antes da hora.
+        case "setRollModifier": {
+            if (!isMaster) {
+                return res.status(403).json({ message: "Apenas o mestre pode definir vantagem/desvantagem" });
+            }
+            const { characterId: modCharId, value } = req.body;
+            if (!modCharId) return res.status(400).json({ message: "characterId obrigatório" });
+
+            const modChar = await prisma.character.findUnique({ where: { id: modCharId } });
+            if (!modChar || modChar.campaignId !== campaignId) {
+                return res.status(404).json({ message: "Personagem não encontrado nesta mesa" });
+            }
+
+            let n: number | null = null;
+            if (value !== null && value !== undefined && value !== "") {
+                n = Number(value);
+                if (!Number.isInteger(n)) {
+                    return res.status(400).json({ message: "value deve ser um inteiro (ou vazio para limpar)" });
+                }
+            }
+
+            await prisma.character.update({ where: { id: modCharId }, data: { pendingRollModifier: n } });
+
+            if (n !== null && n !== 0) {
+                await prisma.actionLog.create({
+                    data: {
+                        type: LogType.MANUAL_OVERRIDE,
+                        message: `${modChar.name} vai rolar com ${n > 0 ? "vantagem" : "desvantagem"} (${n > 0 ? "+" : ""}${n}) nesta rodada`,
+                        characterId: modCharId,
+                        combatId: combatId ?? null,
+                    },
+                });
+            }
+
+            if (combatId) notifyCombatUpdate(combatId);
+            return res.status(200).json({ pendingRollModifier: n });
         }
 
         case "reorderTurns": {

@@ -40,6 +40,9 @@ export function RollBreakdown({
   // Dano: usa a prop quando fornecida, senão os impactRolls salvos na rolagem
   const dmgRolls: number[] | undefined =
     damageRolls ?? (roll.impactRolls?.length ? roll.impactRolls : undefined);
+  // Fórmula já resolvida (ex: "1d6+8") gravada na própria rolagem — prefere
+  // a essa em vez de preset.impactFormula "cru" (que pode ter {{atributo}})
+  const impactFormulaText: string | null = roll.impactFormulaResolved ?? roll.preset?.impactFormula ?? null;
   const dmgDiceSum = dmgRolls?.reduce((a: number, b: number) => a + b, 0) ?? 0;
   // Diferença entre o dano final e os dados = atributo/bônus (e crítico, se houver)
   const dmgBonus = damageModifier > 0
@@ -82,6 +85,17 @@ export function RollBreakdown({
                   <span style={{ color: dieColor(v, roll.diceRolled), fontWeight: 700 }}>{v}</span>
                 </span>
               ))}
+              {roll.droppedRolls?.length > 0 && (
+                <span style={{ color: "#666" }}>
+                  {", "}
+                  {roll.droppedRolls.map((v: number, i: number) => (
+                    <span key={i}>
+                      {i > 0 && ", "}
+                      <span style={{ textDecoration: "line-through" }} title="Rolado, mas não contado (mantém o maior)">{v}</span>
+                    </span>
+                  ))}
+                </span>
+              )}
               {")"}
               {attackModifier !== 0 && (
                 <span style={{ color: "#a78bfa" }}> {modifierText}</span>
@@ -133,10 +147,10 @@ export function RollBreakdown({
 
             <Box sx={{ fontFamily: "monospace", fontSize: 12, backgroundColor: "#1a1a2e", p: 1.5, borderRadius: 1 }}>
               <Stack spacing={0.8}>
-                {(roll.preset?.impactFormula || dmgRolls) && (
+                {(impactFormulaText || dmgRolls) && (
                   <Typography sx={{ fontFamily: "monospace" }}>
-                    {roll.preset?.impactFormula && (
-                      <span style={{ color: "#fbbf24" }}>{roll.preset.impactFormula}</span>
+                    {impactFormulaText && (
+                      <span style={{ color: "#fbbf24" }}>{impactFormulaText}</span>
                     )}
                     {dmgRolls && (
                       <>
@@ -159,7 +173,7 @@ export function RollBreakdown({
 
                   {dmgBonus > 0 && (
                     <Typography sx={{ fontFamily: "monospace", fontSize: 11 }}>
-                      ├─ Bônus{roll.critical ? "/crítico" : ""}:{" "}
+                      ├─ Bônus{roll.critical ? " (atributo × crítico já aplicado)" : ""}:{" "}
                       <span style={{ color: "#a78bfa" }}>+{dmgBonus}</span>
                     </Typography>
                   )}

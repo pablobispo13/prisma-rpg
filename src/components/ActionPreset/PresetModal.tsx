@@ -16,13 +16,20 @@ import {
     Box,
     Chip,
     IconButton,
+    Popover,
+    List,
+    ListItemButton,
+    ListItemText,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
-import { useEffect, useState } from "react";
+import FunctionsIcon from "@mui/icons-material/Functions";
+import { useEffect, useRef, useState } from "react";
 import api from "../../lib/api";
 import { ActionPresetType, PresetEffectType } from "../../types/types";
 import { validateDiceFormula } from "../../lib/dice";
+import { resolveAttributeAlias } from "../../lib/formula";
+import { useCampaign } from "../../context/CampaignContext";
 
 /* ─── constants ─────────────────────────────────────────── */
 
@@ -46,13 +53,22 @@ const TARGET_TYPES = [
     { value: "MULTIPLE", label: "Múltiplos alvos" },
 ];
 
-const ATTRIBUTES = [
+const FIXED_ATTRIBUTES = [
     { value: "STRENGTH",  label: "Força" },
     { value: "AGILITY",   label: "Agilidade" },
     { value: "VIGOR",     label: "Vigor" },
     { value: "INTELLECT", label: "Intelecto" },
     { value: "PRESENCE",  label: "Presença" },
 ];
+
+// Slug em português usado ao inserir a variável na fórmula (ex: {{força}})
+const FIXED_ATTRIBUTE_SLUGS: Record<string, string> = {
+    STRENGTH: "força",
+    AGILITY: "agilidade",
+    VIGOR: "vigor",
+    INTELLECT: "intelecto",
+    PRESENCE: "presença",
+};
 
 const RESOLUTION_TYPES = [
     { value: "DEFENSE",   label: "Defesa (padrão) — total do atacante vs defesa do alvo" },
@@ -218,10 +234,22 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
     const [impactError, setImpactError] = useState<string | null>(null);
     const [saving, setSaving]           = useState(false);
 
+    // Atributos selecionáveis: os 5 fixos + os customizados da mesa ativa
+    // (ver Minhas Mesas > Editar mesa > Atributos customizados)
+    const { activeCampaign } = useCampaign();
+    const ATTRIBUTES = [
+        ...FIXED_ATTRIBUTES,
+        ...(activeCampaign?.customAttributes ?? []).map((a) => ({ value: a.key, label: a.label })),
+    ];
+
     // Formas disponíveis pro seletor "Forma-alvo" (type=TRANSFORM) — mesmo
     // shape do formGroup de GET /characters/[id] (ficha principal + formas)
     const [formGroupOptions, setFormGroupOptions] = useState<{ id: string; name: string }[]>([]);
     const [primaryId, setPrimaryId] = useState<string | null>(null);
+
+    // Dados do personagem (atributos base + customizados) — usado só pra
+    // mostrar quantos pontos cada variável {{atributo}} vai usar (prévia)
+    const [characterData, setCharacterData] = useState<any>(null);/* eslint-disable-line @typescript-eslint/no-explicit-any */
 
     useEffect(() => {
         if (!open || !characterId) return;
@@ -230,12 +258,59 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                 const fg = res.data?.formGroup;
                 setFormGroupOptions(fg?.options ?? []);
                 setPrimaryId(fg?.primaryId ?? null);
+                setCharacterData(res.data ?? null);
             })
             .catch(() => {
                 setFormGroupOptions([]);
                 setPrimaryId(null);
+                setCharacterData(null);
             });
     }, [open, characterId]);
+
+    // Valor atual de um atributo (chave canônica: "strength"/"maestria"…) —
+    // mesma resolução de src/lib/attributes.ts::getAttributeValue, mas só de leitura
+    const FIXED_KEYS = ["strength", "agility", "vigor", "intellect", "presence"];
+    function attributeValueFor(resolvedKey: string): number {
+        if (!characterData) return 0;
+        if (FIXED_KEYS.includes(resolvedKey)) return characterData[resolvedKey] ?? 0;
+        return characterData.customAttributes?.[resolvedKey] ?? 0;
+    }
+
+    // Prévia: substitui {{atributo}} pelos pontos atuais do personagem, sem
+    // rolar nada — só pra mostrar "o que vai ser usado" antes de salvar
+    function previewFormula(formula: string): string {
+        return formula.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, word: string) =>
+            String(attributeValueFor(resolveAttributeAlias(word)))
+        );
+    }
+
+    // Inserção de variável no campo de fórmula focado, na posição do cursor
+    const diceInputRef = useRef<HTMLInputElement>(null);
+    const impactInputRef = useRef<HTMLInputElement>(null);
+    const [varMenuAnchor, setVarMenuAnchor] = useState<{ el: HTMLElement; field: "diceFormula" | "impactFormula" } | null>(null);
+
+    function insertVariable(slug: string) {
+        if (!varMenuAnchor) return;
+        const field = varMenuAnchor.field;
+        const el = (field === "diceFormula" ? diceInputRef : impactInputRef).current;
+        const token = `{{${slug}}}`;
+        const current = String(form[field] ?? "");
+
+        if (el) {
+            const start = el.selectionStart ?? current.length;
+            const end = el.selectionEnd ?? current.length;
+            const next = current.slice(0, start) + token + current.slice(end);
+            update(field, next);
+            requestAnimationFrame(() => {
+                el.focus();
+                const pos = start + token.length;
+                el.setSelectionRange(pos, pos);
+            });
+        } else {
+            update(field, current + token);
+        }
+        setVarMenuAnchor(null);
+    }
 
     useEffect(() => {
         if (open) {
@@ -533,14 +608,26 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     {/* ── Rolagem ── */}
                     <Box>
                         <SectionLabel>Rolagem</SectionLabel>
-                        <Stack direction="row" spacing={1.5}>
+                        <Stack direction="row" spacing={1.5} alignItems="flex-start">
                             <TextField
                                 label="Dado de ataque"
                                 value={form.diceFormula}
                                 onChange={e => update("diceFormula", e.target.value)}
                                 error={!!diceError}
-                                helperText={diceError ?? "Ex: 1d20, 1d8+1d4"}
+                                helperText={diceError ?? "Ex: 1d20, 1d8+1d4, {{força}}d20, 2#d20 (rola 2, usa o maior)"}
                                 fullWidth size="small"
+                                inputRef={diceInputRef}
+                                InputProps={{
+                                    endAdornment: (
+                                        <IconButton
+                                            size="small"
+                                            title="Inserir variável de atributo"
+                                            onClick={e => setVarMenuAnchor({ el: e.currentTarget, field: "diceFormula" })}
+                                        >
+                                            <FunctionsIcon sx={{ fontSize: 16, color: "#888" }} />
+                                        </IconButton>
+                                    ),
+                                }}
                             />
                             {showImpact && (
                                 <TextField
@@ -548,8 +635,20 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                     value={form.impactFormula}
                                     onChange={e => update("impactFormula", e.target.value)}
                                     error={!!impactError}
-                                    helperText={impactError ?? "Ex: 2d6+3"}
+                                    helperText={impactError ?? "Ex: 2d6+3, {{maestria}}d6"}
                                     fullWidth size="small"
+                                    inputRef={impactInputRef}
+                                    InputProps={{
+                                        endAdornment: (
+                                            <IconButton
+                                                size="small"
+                                                title="Inserir variável de atributo"
+                                                onClick={e => setVarMenuAnchor({ el: e.currentTarget, field: "impactFormula" })}
+                                            >
+                                                <FunctionsIcon sx={{ fontSize: 16, color: "#888" }} />
+                                            </IconButton>
+                                        ),
+                                    }}
                                 />
                             )}
                             <TextField
@@ -561,6 +660,49 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                 helperText="Bônus fixo"
                             />
                         </Stack>
+
+                        <Popover
+                            open={!!varMenuAnchor}
+                            anchorEl={varMenuAnchor?.el}
+                            onClose={() => setVarMenuAnchor(null)}
+                            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                        >
+                            <List dense sx={{ minWidth: 220, py: 0.5 }}>
+                                {ATTRIBUTES.map(a => {
+                                    const slug = FIXED_ATTRIBUTE_SLUGS[a.value] ?? a.value;
+                                    const resolvedKey = resolveAttributeAlias(slug);
+                                    return (
+                                        <ListItemButton key={a.value} onClick={() => insertVariable(slug)}>
+                                            <ListItemText
+                                                primary={a.label}
+                                                secondary={characterData ? `${attributeValueFor(resolvedKey)} ponto(s)` : undefined}
+                                            />
+                                        </ListItemButton>
+                                    );
+                                })}
+                            </List>
+                        </Popover>
+
+                        {(form.diceFormula.includes("{{") || (showImpact && form.impactFormula.includes("{{"))) && (
+                            <Box sx={{ mt: 0.75, p: 1, borderRadius: 1, bgcolor: "rgba(107,122,219,0.06)", border: "1px solid rgba(107,122,219,0.15)" }}>
+                                {form.diceFormula.includes("{{") && (
+                                    <Typography variant="caption" sx={{ display: "block", color: "#8B9DFF" }}>
+                                        Prévia do dado: <code>{previewFormula(form.diceFormula)}</code>
+                                    </Typography>
+                                )}
+                                {showImpact && form.impactFormula.includes("{{") && (
+                                    <Typography variant="caption" sx={{ display: "block", color: "#8B9DFF" }}>
+                                        Prévia do impacto: <code>{previewFormula(form.impactFormula)}</code>
+                                    </Typography>
+                                )}
+                            </Box>
+                        )}
+
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                            Variáveis: {"{{"}atributo{"}}"} vira o valor do atributo do personagem (aceita os nomes fixos
+                            e os customizados da mesa: {ATTRIBUTES.map(a => a.label).join(", ")}). Use{" "}
+                            <code>N#dM</code> para rolar N dados e contar só o maior (ex: <code>{"{{agilidade}}"}#d20</code>).
+                        </Typography>
 
                         {showCrit && (
                             <Stack direction="row" spacing={1.5} mt={1.5}>

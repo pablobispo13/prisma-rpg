@@ -4,6 +4,7 @@ import { Stack, Typography, Paper, Box } from "@mui/material";
 import {
   calculateDamageEstimate,
   calculateCriticalDamage,
+  formulaReferencesAttribute,
 } from "../../lib/presetUtils";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   diceFormula: string;
   modifier: number;
   characterAttribute: number;
+  attributeName?: string;
   critThreshold?: number;
   critMultiplier?: number;
 };
@@ -20,13 +22,19 @@ export function DamageCalculator({
   diceFormula,
   modifier,
   characterAttribute,
+  attributeName = "",
   critThreshold = 20,
   critMultiplier = 2,
 }: Props) {
+  // Fórmulas que já usam {{atributo}} não somam o bônus de novo — mesmo
+  // raciocínio de POST /roll (ver src/lib/attributes.ts::formulaReferencesAttribute)
+  const diceUsesAttribute = formulaReferencesAttribute(diceFormula, attributeName);
+  const impactUsesAttribute = formulaReferencesAttribute(impactFormula, attributeName);
+
   const damage = calculateDamageEstimate(
     impactFormula,
     modifier,
-    characterAttribute,
+    impactUsesAttribute ? 0 : characterAttribute,
   );
 
   if (!damage) {
@@ -53,7 +61,7 @@ export function DamageCalculator({
             variant="body2"
             sx={{ fontFamily: "monospace", fontWeight: 600 }}
           >
-            {diceFormula} {characterAttribute > 0 && `+ ${characterAttribute}`}{" "}
+            {diceFormula} {characterAttribute > 0 && !diceUsesAttribute && `+ ${characterAttribute}`}{" "}
             {modifier > 0 && `+ ${modifier}`}
           </Typography>
         </Box>

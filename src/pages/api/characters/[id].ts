@@ -2,6 +2,7 @@ import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
 import { hideCharacterSanity } from "../../../lib/campaignAccess";
+import { sanitizeCustomAttributeValues } from "../../../lib/customAttributes";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   const { id } = req.query;
@@ -97,7 +98,23 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       sanity,
       maxSanity,
       abilitySanityCostOverride,
+      customAttributes,
     } = req.body;
+
+    // Atributos customizados: merge parcial (só as keys enviadas mudam;
+    // as demais mantêm o valor atual). Só aceita keys que existem na mesa.
+    let customAttributesValue: Record<string, number> | undefined;
+    if (customAttributes && typeof customAttributes === "object") {
+      const validDefs = await prisma.customAttribute.findMany({
+        where: { campaignId: character.campaignId },
+        select: { key: true },
+      });
+      const existing = (character.customAttributes as Record<string, number> | null) ?? {};
+      customAttributesValue = {
+        ...existing,
+        ...sanitizeCustomAttributeValues(customAttributes, new Set(validDefs.map((a) => a.key))),
+      };
+    }
 
     // image pode ser alterada pelo admin ou pelo mestre da mesa deste personagem
     const allowImage = requesterIsMaster;
@@ -138,6 +155,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         vigor,
         intellect,
         presence,
+        ...(customAttributesValue !== undefined ? { customAttributes: customAttributesValue } : {}),
         baseDefense,
         history,
         notes,
@@ -202,6 +220,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           vigor: source.vigor,
           intellect: source.intellect,
           presence: source.presence,
+          customAttributes: source.customAttributes ?? undefined,
           baseDefense: source.baseDefense,
           maxReactionsPerRound: source.maxReactionsPerRound,
           maxAttacksPerRound: source.maxAttacksPerRound,

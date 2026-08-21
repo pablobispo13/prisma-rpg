@@ -35,6 +35,7 @@ import { useCombat, CombatProvider } from "../../context/CombatContext";
 import api from "../../lib/api";
 import { useRouter } from "next/router";
 import { ActionPresetType } from "../../types/types";
+import { previewFormulaVariables, buildAttributeValueMap, formulaReferencesAttribute } from "../../lib/presetUtils";
 import { CombatTimelineV2 } from "../Log/CombatTimelineV2";
 import { DiceInputRoller } from "../DiceInputRoller";
 import Head from "next/head";
@@ -147,9 +148,16 @@ const ATTR_LABEL: Record<string, string> = {
   PRESENCE: "Presença",
 };
 
-function presetTooltipContent(preset: ActionPresetType) {
-  const avgAttack = parseDiceAverage(preset.diceFormula);
-  const avgDamage = preset.impactFormula ? parseDiceAverage(preset.impactFormula) : null;
+function presetTooltipContent(preset: ActionPresetType, attributeValues: Record<string, number>) {
+  // Fórmulas com {{atributo}} resolvidas pro valor atual (ex: "8d20") — tanto
+  // pra exibir quanto pra calcular a média certa (parseDiceAverage não entende {{}})
+  const resolvedDice = previewFormulaVariables(preset.diceFormula, attributeValues);
+  const resolvedImpact = preset.impactFormula ? previewFormulaVariables(preset.impactFormula, attributeValues) : null;
+  const diceUsesAttribute = formulaReferencesAttribute(preset.diceFormula, preset.attribute);
+  const impactUsesAttribute = formulaReferencesAttribute(preset.impactFormula, preset.attribute);
+
+  const avgAttack = parseDiceAverage(resolvedDice);
+  const avgDamage = resolvedImpact ? parseDiceAverage(resolvedImpact) : null;
   const avgCrit =
     avgDamage && preset.critMultiplier
       ? Math.round(avgDamage * preset.critMultiplier * 10) / 10
@@ -175,13 +183,15 @@ function presetTooltipContent(preset: ActionPresetType) {
         <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
 
         <Typography fontSize={11} color="#fbbf24" fontWeight={600}>Rolagem de Ataque</Typography>
-        <Row label="Dado" value={`${preset.diceFormula}  (média ${avgAttack})`} />
+        <Row label="Dado" value={`${resolvedDice}  (média ${avgAttack})`} />
         {!!preset.modifier && (
           <Row label="Modificador" value={`${preset.modifier > 0 ? "+" : ""}${preset.modifier}`} />
         )}
         <Row
           label="Total médio"
-          value={`~${avgAttack + (preset.modifier ?? 0)} + ${attrLabel}`}
+          value={diceUsesAttribute
+            ? `~${avgAttack + (preset.modifier ?? 0)}`
+            : `~${avgAttack + (preset.modifier ?? 0)} + ${attrLabel}`}
           highlight
         />
 
@@ -189,12 +199,16 @@ function presetTooltipContent(preset: ActionPresetType) {
           <>
             <Divider sx={{ borderColor: "#ffffff15", my: 0.5 }} />
             <Typography fontSize={11} color="#f87171" fontWeight={600}>Impacto</Typography>
-            <Row label="Fórmula" value={`${preset.impactFormula}  (média ${avgDamage})`} />
-            <Row label="Dano médio" value={`~${avgDamage} + ${attrLabel}`} highlight />
+            <Row label="Fórmula" value={`${resolvedImpact}  (média ${avgDamage})`} />
+            <Row
+              label="Dano médio"
+              value={impactUsesAttribute ? `~${avgDamage}` : `~${avgDamage} + ${attrLabel}`}
+              highlight
+            />
             {avgCrit && (
               <Row
                 label={`Crítico ×${preset.critMultiplier}`}
-                value={`~${avgCrit} + ${attrLabel}`}
+                value={impactUsesAttribute ? `~${avgCrit}` : `~${avgCrit} + ${attrLabel}`}
                 danger
               />
             )}
@@ -330,6 +344,11 @@ function CombatScreenContent() {
   const [hpEditOpen, setHpEditOpen] = useState(false);
   const [hpEditParticipant, setHpEditParticipant] = useState<any>(null);
   const [hpEditValue, setHpEditValue] = useState<number>(0);
+
+  // Vantagem/desvantagem — modificador na PRÓXIMA rolagem do personagem (mestre)
+  const [rollModOpen, setRollModOpen] = useState(false);
+  const [rollModParticipant, setRollModParticipant] = useState<any>(null);
+  const [rollModValue, setRollModValue] = useState<string>("5");
 
   // Drag-and-drop order
   const [orderedParticipants, setOrderedParticipants] = useState<any[]>([]);
@@ -501,6 +520,17 @@ function CombatScreenContent() {
     });
     setSanityEditOpen(false);
     setSanityEditParticipant(null);
+    await refreshCombat();
+  }
+
+  async function submitRollModifier(value: number | null) {
+    if (!rollModParticipant) return;
+    await api.post("/combat/control", {
+      action: "setRollModifier", combatId: combat.id,
+      characterId: rollModParticipant.character.id, value,
+    });
+    setRollModOpen(false);
+    setRollModParticipant(null);
     await refreshCombat();
   }
 
@@ -827,6 +857,37 @@ function CombatScreenContent() {
                           </Box>
                         )}
 
+                        {/* Vantagem/desvantagem pendente — some sozinha na próxima rolagem */}
+                        {(p.character.pendingRollModifier != null || isMaster) && (
+                          <Box
+                            onClick={(e) => {
+                              if (!isMaster) return;
+                              e.stopPropagation();
+                              setRollModParticipant(p);
+                              setRollModValue(p.character.pendingRollModifier != null ? String(p.character.pendingRollModifier) : "5");
+                              setRollModOpen(true);
+                            }}
+                            sx={{
+                              display: p.character.pendingRollModifier != null ? "inline-flex" : isMaster ? "inline-flex" : "none",
+                              alignItems: "center", gap: 0.4, mt: 0.5, ml: p.character.sanity != null ? 0.5 : 0,
+                              px: 0.75, py: 0.15, borderRadius: 1,
+                              bgcolor: p.character.pendingRollModifier != null
+                                ? (p.character.pendingRollModifier > 0 ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)")
+                                : "rgba(255,255,255,0.05)",
+                              border: `1px solid ${p.character.pendingRollModifier != null ? (p.character.pendingRollModifier > 0 ? "rgba(74,222,128,0.35)" : "rgba(248,113,113,0.35)") : "rgba(255,255,255,0.15)"}`,
+                              cursor: isMaster ? "pointer" : "default",
+                            }}
+                          >
+                            <Typography fontSize={10} lineHeight={1}>🎲</Typography>
+                            <Typography fontSize={11} fontWeight={700} lineHeight={1}
+                              color={p.character.pendingRollModifier == null ? "#888" : p.character.pendingRollModifier > 0 ? "#4ade80" : "#f87171"}>
+                              {p.character.pendingRollModifier != null
+                                ? `${p.character.pendingRollModifier > 0 ? "+" : ""}${p.character.pendingRollModifier}`
+                                : "definir"}
+                            </Typography>
+                          </Box>
+                        )}
+
                         {/* Active effects */}
                         <EffectChips effects={p.character.statusEffects} />
                       </CardContent>
@@ -918,7 +979,7 @@ function CombatScreenContent() {
               return (
                 <Tooltip
                   key={preset.id}
-                  title={presetTooltipContent(preset)}
+                  title={presetTooltipContent(preset, buildAttributeValueMap(presetsSource))}
                   placement="top"
                   arrow
                   componentsProps={{ tooltip: { sx: { backgroundColor: "#1a1a2e", border: "1px solid rgba(107,122,219,0.4)", maxWidth: 280 } } }}
@@ -1182,6 +1243,28 @@ function CombatScreenContent() {
         <DialogActions>
           <Button onClick={() => setSanityEditOpen(false)} color="inherit">Cancelar</Button>
           <Button variant="contained" onClick={submitSanityEdit}>Confirmar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* VANTAGEM/DESVANTAGEM — modificador na próxima rolagem */}
+      <Dialog open={rollModOpen} onClose={() => setRollModOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Vantagem/Desvantagem — {rollModParticipant?.character?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <Typography fontSize={13} color="#aaa">
+              Vale para todas as rolagens de {rollModParticipant?.character?.name} (ataque, teste ou reação) nesta rodada — some sozinho quando a rodada avançar.
+            </Typography>
+            <TextField label="Modificador" type="number" value={rollModValue} onChange={(e) => setRollModValue(e.target.value)} fullWidth autoFocus helperText="Positivo = vantagem, negativo = desvantagem" />
+            <Stack direction="row" spacing={1}>
+              <Button size="small" variant="outlined" onClick={() => setRollModValue("5")}>+5 Vantagem</Button>
+              <Button size="small" variant="outlined" onClick={() => setRollModValue("-5")}>-5 Desvantagem</Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => submitRollModifier(null)} color="inherit">Limpar</Button>
+          <Button onClick={() => setRollModOpen(false)} color="inherit">Cancelar</Button>
+          <Button variant="contained" onClick={() => submitRollModifier(rollModValue === "" ? null : Number(rollModValue))}>Confirmar</Button>
         </DialogActions>
       </Dialog>
 

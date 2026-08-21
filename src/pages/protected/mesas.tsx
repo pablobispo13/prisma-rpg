@@ -26,6 +26,8 @@ import { useCampaign, CampaignSummary } from "../../context/CampaignContext";
 import { campaignSchema, CampaignForm, joinSchema, JoinForm } from "../../validation/campaign";
 import { DEFAULT_DEFENSE_FORMULA, DEFAULT_MAX_LIFE_FORMULA } from "../../lib/characterCalculations";
 import { FORMULA_VARIABLES } from "../../lib/formula";
+import { CustomAttributeType } from "../../types/types";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 const EXPIRATION_OPTIONS = [
   { label: "Não expira", value: 0 },
@@ -60,6 +62,11 @@ export default function MesasPage() {
 
   // Custo de sanidade automático por uso de habilidade
   const [editAbilitySanityCost, setEditAbilitySanityCost] = useState<string>("");
+
+  // Atributos customizados (Maestria, Sorte...) — CRUD próprio, fora do PATCH da mesa
+  const [newAttrLabel, setNewAttrLabel] = useState("");
+  const [newAttrDefault, setNewAttrDefault] = useState("0");
+  const [attrSaving, setAttrSaving] = useState(false);
 
   // Admin: atribuir mesa a um mestre ao criar
   type AdminUserOption = {
@@ -220,6 +227,38 @@ export default function MesasPage() {
     setEditImageColor(c.characterImageColor ?? "");
     setEditAbilitySanityCost(c.abilitySanityCost == null ? "" : String(c.abilitySanityCost));
     setJumpToDay("");
+    setNewAttrLabel("");
+    setNewAttrDefault("0");
+  };
+
+  const handleAddCustomAttribute = async () => {
+    if (!editTarget || !newAttrLabel.trim()) return;
+    setAttrSaving(true);
+    try {
+      const { data } = await api.post(`/campaigns/${editTarget.id}/attributes`, {
+        label: newAttrLabel.trim(),
+        defaultValue: newAttrDefault === "" ? 0 : Number(newAttrDefault),
+      });
+      toast.success(`Atributo "${data.label}" criado e aplicado a todos os personagens da mesa`);
+      setNewAttrLabel("");
+      setNewAttrDefault("0");
+      setEditTarget((prev) => (prev ? { ...prev, customAttributes: [...prev.customAttributes, data] } : prev));
+      await refresh();
+    } catch {}
+    finally { setAttrSaving(false); }
+  };
+
+  const handleDeleteCustomAttribute = async (attr: CustomAttributeType) => {
+    if (!editTarget) return;
+    if (!confirm(`Remover o atributo "${attr.label}"? Só é possível se ele não estiver em uso em nenhum preset/efeito da mesa.`)) return;
+    try {
+      await api.delete(`/campaigns/${editTarget.id}/attributes/${attr.id}`);
+      toast.success(`Atributo "${attr.label}" removido`);
+      setEditTarget((prev) =>
+        prev ? { ...prev, customAttributes: prev.customAttributes.filter((a) => a.id !== attr.id) } : prev
+      );
+      await refresh();
+    } catch {}
   };
 
   const handleAdvanceDay = async (setDay?: number) => {
@@ -576,7 +615,10 @@ export default function MesasPage() {
                 Fórmulas de atributos derivados
               </Typography>
               <Typography variant="caption" sx={{ color: "#7a7f95" }}>
-                Deixe em branco para usar a fórmula padrão. Variáveis: {FORMULA_VARIABLES.join(", ")}.
+                Deixe em branco para usar a fórmula padrão. Variáveis: {FORMULA_VARIABLES.join(", ")}
+                {editTarget && editTarget.customAttributes.length > 0
+                  ? `, ${editTarget.customAttributes.map((a) => a.key).join(", ")}`
+                  : ""}.
                 Operadores: + - * / e parênteses.
               </Typography>
               <Controller
@@ -599,6 +641,63 @@ export default function MesasPage() {
                     helperText={fieldState.error?.message ?? `Padrão: ${DEFAULT_MAX_LIFE_FORMULA}`} />
                 )}
               />
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Atributos customizados
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Atributos extras da mesa (ex: Maestria, Sorte), além dos 5 fixos — funcionam em testes,
+                presets de ataque/habilidade, buffs/debuffs e nas fórmulas acima. São aplicados a todos os
+                personagens da mesa assim que criados.
+              </Typography>
+              {editTarget && editTarget.customAttributes.length > 0 && (
+                <List dense disablePadding>
+                  {editTarget.customAttributes.map((attr) => (
+                    <ListItem
+                      key={attr.id}
+                      disableGutters
+                      secondaryAction={
+                        <IconButton edge="end" size="small" onClick={() => handleDeleteCustomAttribute(attr)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText
+                        primary={attr.label}
+                        secondary={`key: ${attr.key} · padrão: ${attr.defaultValue}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Nome do novo atributo"
+                  placeholder="Ex: Maestria"
+                  value={newAttrLabel}
+                  onChange={(e) => setNewAttrLabel(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  size="small"
+                  label="Valor padrão"
+                  type="number"
+                  value={newAttrDefault}
+                  onChange={(e) => setNewAttrDefault(e.target.value)}
+                  sx={{ maxWidth: 140 }}
+                />
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={!newAttrLabel.trim() || attrSaving}
+                  onClick={handleAddCustomAttribute}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  Adicionar
+                </Button>
+              </Stack>
 
               <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
               <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>

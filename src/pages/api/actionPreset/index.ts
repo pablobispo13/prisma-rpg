@@ -1,8 +1,9 @@
 import { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { ActionType, AttributeType, EffectType, TargetType, ResolutionType, EffectSelectionMode, EffectTarget, StatusType } from "@prisma/client";
+import { ActionType, EffectType, TargetType, ResolutionType, EffectSelectionMode, EffectTarget, StatusType } from "@prisma/client";
 import { canActOnCharacter } from "../../../lib/campaignAccess";
+import { isValidAttributeKey } from "../../../lib/attributes";
 
 // Normaliza as linhas de efeito recebidas do front para o formato do banco
 export function sanitizePresetEffects(effects: unknown): Array<{
@@ -12,7 +13,7 @@ export function sanitizePresetEffects(effects: unknown): Array<{
   target: EffectTarget;
   value: number | null;
   valueFormula: string | null;
-  statAffected: AttributeType | null;
+  statAffected: string | null;
   statusApplied: StatusType | null;
   durationTurns: number | null;
   retestEachRound: boolean;
@@ -31,7 +32,7 @@ export function sanitizePresetEffects(effects: unknown): Array<{
       target: (e.target as EffectTarget) ?? EffectTarget.TARGETS,
       value: e.value ?? null,
       valueFormula: e.valueFormula ? String(e.valueFormula) : null,
-      statAffected: (e.statAffected as AttributeType) ?? null,
+      statAffected: e.statAffected ? String(e.statAffected) : null,
       statusApplied: (e.statusApplied as StatusType) ?? null,
       durationTurns: e.durationTurns ?? null,
       retestEachRound: Boolean(e.retestEachRound),
@@ -39,6 +40,24 @@ export function sanitizePresetEffects(effects: unknown): Array<{
       sortOrder: e.sortOrder ?? index,
     };
   });
+}
+
+/**
+ * Valida que attribute/contestAttribute/statAffected (do preset e de cada
+ * linha de efeito) são atributos utilizáveis na mesa do personagem: um dos
+ * 5 fixos ou a key de um CustomAttribute já criado nela.
+ */
+export async function validateAttributeKeys(
+  campaignId: string,
+  keys: Array<string | null | undefined>
+): Promise<string | null> {
+  const unique = [...new Set(keys.filter((k): k is string => !!k))];
+  for (const key of unique) {
+    if (!(await isValidAttributeKey(key, campaignId))) {
+      return `Atributo "${key}" não existe nesta mesa`;
+    }
+  }
+  return null;
 }
 
 // null/"" = ilimitado; senão precisa ser inteiro >= 1
@@ -131,6 +150,15 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
+    const ownerCharacter = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: { campaignId: true },
+    });
+    if (!ownerCharacter) {
+      res.status(404).json({ message: "Personagem não encontrado" });
+      return;
+    }
+
     // Presets TRANSFORM só existem na ficha principal (nunca na forma —
     // combat/[id].ts e o front só leem TRANSFORM via primaryForm.presets).
     // Criar um pela ficha de uma forma alternativa (ex: editando "Habilidades"
@@ -163,10 +191,21 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return;
     }
 
+    const attributeError = await validateAttributeKeys(ownerCharacter.campaignId, [
+      attribute,
+      contestAttribute,
+      statAffected,
+      ...(effectRows ? effectRows.map((r) => r.statAffected) : []),
+    ]);
+    if (attributeError) {
+      res.status(400).json({ message: attributeError });
+      return;
+    }
+
     const preset = await prisma.actionPreset.create({
       data: {
         resolution: resolution ? (resolution as ResolutionType) : undefined,
-        contestAttribute: contestAttribute ? (contestAttribute as AttributeType) : null,
+        contestAttribute: contestAttribute ? String(contestAttribute) : null,
         effectSelectionMode: effectSelectionMode ? (effectSelectionMode as EffectSelectionMode) : undefined,
         usesPerDay: usesPerDayValue,
         ...(effectRows && effectRows.length > 0
@@ -186,7 +225,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         appliesEffect: appliesEffect ?? true,
         isAreaEffect: isAreaEffect ?? false,
         transformedOnly: transformedOnly ?? false,
-        attribute: attribute as AttributeType,
+        attribute: String(attribute),
         // Só relevante quando type=TRANSFORM (forma-alvo; null = volta à base)
         targetFormId: type === "TRANSFORM" && targetFormId ? targetFormId : null,
         characterId: resolvedCharacterId,

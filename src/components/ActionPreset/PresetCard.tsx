@@ -15,7 +15,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import { ActionPreset, TargetType } from "@prisma/client";
-import { ActionPresetType } from "../../types/types";
+import { ActionPresetType, Character } from "../../types/types";
 import { useState } from "react";
 import {
   getActionColor,
@@ -23,6 +23,7 @@ import {
   getActionName,
   getTargetName,
   formatPresetDisplay,
+  buildAttributeValueMap,
 } from "../../lib/presetUtils";
 import { DamageCalculator } from "./DamageCalculator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -31,6 +32,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 
 type Props = {
   preset: ActionPreset | ActionPresetType;
+  character?: Character;
   characterAttribute?: number;
   canEdit?: boolean;
   onEdit?: () => void;
@@ -40,6 +42,7 @@ type Props = {
 
 export function PresetCard({
   preset,
+  character,
   characterAttribute = 0,
   canEdit = false,
   onEdit,
@@ -53,6 +56,7 @@ export function PresetCard({
   const icon = getActionIcon(preset.type);
   const actionName = getActionName(preset.type);
   const targetName = getTargetName(preset.targetType as TargetType);
+  const attributeValues = character ? buildAttributeValueMap(character) : undefined;
 
   const displayText = formatPresetDisplay(
     preset.diceFormula,
@@ -60,6 +64,7 @@ export function PresetCard({
     preset.modifier,
     characterAttribute,
     preset.attribute,
+    attributeValues,
   );
 
   return (
@@ -276,6 +281,7 @@ export function PresetCard({
                       diceFormula={preset.diceFormula}
                       modifier={preset.modifier}
                       characterAttribute={characterAttribute}
+                      attributeName={preset.attribute}
                       critThreshold={preset.critThreshold ?? undefined}
                       critMultiplier={preset.critMultiplier ?? undefined}
                     />
