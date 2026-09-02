@@ -28,18 +28,25 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         });
         const isMasterOfChar = charForLogs?.campaign.masterId === user.userId;
 
-        const actionLogs = await prisma.actionLog.findMany({
-            where: {
-                characterId,
-                ...(isMasterOfChar ? {} : { NOT: { masterOnly: true } }),
-            },
-            take: 10,
+        // Busca uma folga extra e filtra masterOnly em JS (não no Mongo): logs
+        // antigos/a maioria não têm o campo `masterOnly` gravado no documento
+        // (undefined, não `null`), e o filtro `NOT: { masterOnly: true }` do
+        // Prisma no conector Mongo não casa com campo ausente — some literalmente
+        // todos os logs "normais" da lista de um jogador. Ver combat/[id].ts e
+        // combat/history.ts, que já filtram assim no JS por este mesmo motivo.
+        const rawLogs = await prisma.actionLog.findMany({
+            where: { characterId },
+            take: isMasterOfChar ? 10 : 30,
             orderBy: { createdAt: "desc" },
             include: {
                 roll: { include: { preset: true } },
                 character: true, target: true
             }
         });
+
+        const actionLogs = isMasterOfChar
+            ? rawLogs
+            : rawLogs.filter((l) => l.masterOnly !== true).slice(0, 10);
 
         res.status(200).json({ actionLogs });
         return;

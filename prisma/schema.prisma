@@ -586,8 +586,12 @@ model ActionLog {
   message String
 
   // Log visível apenas para o mestre (ex: ajuste manual de HP).
-  // Nullable para compatibilidade com documentos antigos no Mongo.
-  masterOnly Boolean?
+  // @default(false) garante que o campo seja sempre gravado no Mongo — sem
+  // isso, create() sem o campo grava o documento SEM a chave (nem null), e
+  // filtros do tipo NOT: { masterOnly: true } no conector Mongo do Prisma
+  // não casam com campo ausente (ver GET /actionLogs, que filtra em JS por
+  // segurança mesmo com o default). Nullable só por compat com docs antigos.
+  masterOnly Boolean? @default(false)
 
   characterId String?    @db.ObjectId
   character   Character? @relation("ActionAuthor", fields: [characterId], references: [id])
