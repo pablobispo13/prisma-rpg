@@ -71,7 +71,7 @@ export function RollableActionCard({
           ? `0 8px 24px ${color}40`
           : "0 2px 8px rgba(0, 0, 0, 0.3)",
         height: isRow ? "auto" : "100%",
-        width: isRow ? "100%" : undefined,
+        width: isRow ? "100%" : 96,
         cursor: clickable ? "pointer" : "default",
         opacity: clickable || loading ? 1 : 0.55,
       }}
