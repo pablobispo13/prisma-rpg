@@ -15,6 +15,7 @@ type Props = {
   character: Character;
   presets?: ActionPresetType[];
   loading?: boolean;
+  onRolled?: () => void;
 };
 
 const attributeConfig: Record<
@@ -32,7 +33,7 @@ const attributeConfig: Record<
 // entre algumas cores neutras pra diferenciar visualmente vários deles.
 const CUSTOM_COLORS = ["#26C6DA", "#7E57C2", "#FF7043", "#9CCC65", "#EC407A"];
 
-export function AttributeCard({ character, presets = [], loading = false }: Props) {
+export function AttributeCard({ character, presets = [], loading = false, onRolled }: Props) {
   const { activeCampaign } = useCampaign();
   const customAttributes = activeCampaign?.customAttributes ?? [];
 
@@ -57,6 +58,7 @@ export function AttributeCard({ character, presets = [], loading = false }: Prop
               label={label}
               value={value}
               loading={loading}
+              onRolled={onRolled}
             />
           </Grid>
         );
@@ -77,6 +79,7 @@ export function AttributeCard({ character, presets = [], loading = false }: Prop
               label={attr.label}
               value={value}
               loading={loading}
+              onRolled={onRolled}
             />
           </Grid>
         );

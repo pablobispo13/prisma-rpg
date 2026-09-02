@@ -17,6 +17,9 @@ type Props = {
   // "square" = card de atributo (ícone em cima, valor grande centralizado)
   // "row" = card de ação rápida em lista (ícone à esquerda, label + resultado à direita)
   layout?: "square" | "row";
+  // Chamado após uma rolagem bem-sucedida, pra quem estiver ouvindo (ex: a
+  // ficha) atualizar a lista de "Rolagens Recentes" e o estado do personagem
+  onRolled?: () => void;
 };
 
 /**
@@ -37,6 +40,7 @@ export function RollableActionCard({
   value,
   loading = false,
   layout = "square",
+  onRolled,
 }: Props) {
   const [hovering, setHovering] = useState(false);
   const [rolling, setRolling] = useState(false);
@@ -52,6 +56,7 @@ export function RollableActionCard({
       const res = await api.post("/roll", { actionPresetId, characterId });
       setResult(res.data.roll.total);
       setTimeout(() => setResult(null), 6000);
+      onRolled?.();
     } finally {
       setRolling(false);
     }

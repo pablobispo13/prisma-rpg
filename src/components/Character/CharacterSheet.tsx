@@ -328,7 +328,15 @@ export function CharacterSheet({
 
             {/* Atributos — cada card é clicável e rola o teste do atributo */}
             <Section title="Atributos">
-              <AttributeCard loading={loading} character={character} presets={actionPresets} />
+              <AttributeCard
+                loading={loading}
+                character={character}
+                presets={actionPresets}
+                onRolled={() => {
+                  getCharacter();
+                  getActionLogs();
+                }}
+              />
             </Section>
 
             {/* Inventário */}
@@ -478,6 +486,10 @@ export function CharacterSheet({
                         color={getActionColor(preset.type)}
                         label={preset.name}
                         layout="row"
+                        onRolled={() => {
+                          getCharacter();
+                          getActionLogs();
+                        }}
                       />
                     ))}
                   </Stack>
