@@ -107,13 +107,19 @@ export function RollableActionCard({
             {rolling ? (
               <motion.div
                 key="rolling"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
               >
                 <CasinoIcon fontSize="inherit" />
               </motion.div>
             ) : (
-              <motion.div key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <motion.div
+                key="icon"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
                 {icon}
               </motion.div>
             )}

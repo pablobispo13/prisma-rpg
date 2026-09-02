@@ -37,7 +37,7 @@ export function AttributeCard({ character, presets = [], loading = false }: Prop
   const customAttributes = activeCampaign?.customAttributes ?? [];
 
   return (
-    <Grid container spacing={{ xs: 1, sm: 1.5 }} justifyContent="space-between">
+    <Grid container spacing={{ xs: 1, sm: 1.5 }} justifyContent="center">
       {Character_Attributes.map(({ key, label }) => {
         const config = attributeConfig[key];
         const value = character[key] || 0;
