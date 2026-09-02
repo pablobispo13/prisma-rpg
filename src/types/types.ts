@@ -84,7 +84,7 @@ export type ActionPresetType = {
     characterId: string;
     name: string;
     description?: string | null;
-    type: "SKILL" | "ATTACK" | "TEST" | "REACT" | "SUPPORT" | "SPELL" | "HEAL" | "BUFF" | "DEBUFF" | "TRANSFORM";
+    type: "SKILL" | "ATTACK" | "TEST" | "REACT" | "SUPPORT" | "SPELL" | "HEAL" | "BUFF" | "DEBUFF" | "TRANSFORM" | "CERTAIN_STRIKE";
     targetType: string;
     diceFormula: string;
     impactFormula?: string | null;

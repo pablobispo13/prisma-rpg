@@ -298,7 +298,7 @@ export function CombatProvider({
             return;
         }
 
-        const isAttack = presetType === "ATTACK";
+        const isAttack = presetType === "ATTACK" || presetType === "CERTAIN_STRIKE";
         // Ações com requiresTurn === false são livres (não consomem a ação
         // principal da rodada) — só a ação "clássica" (requiresTurn !== false,
         // exceto ataque, que usa o slot próprio) marca o turno como usado
@@ -366,7 +366,7 @@ export function CombatProvider({
 
         // Ataques consomem "slots" da rodada; ações com requiresTurn === false
         // são livres; as demais seguem a regra clássica de 1 por turno
-        const isAttack = payload.presetType === "ATTACK";
+        const isAttack = payload.presetType === "ATTACK" || payload.presetType === "CERTAIN_STRIKE";
         const consumesTurn = !isAttack && payload.requiresTurn !== false;
         if (isAttack) {
             if (attacksLeft <= 0) return;

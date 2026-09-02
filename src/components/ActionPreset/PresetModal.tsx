@@ -44,6 +44,7 @@ const ACTION_TYPES = [
     { value: "SPELL",   label: "Magia" },
     { value: "TEST",    label: "Teste" },
     { value: "TRANSFORM", label: "Transformação" },
+    { value: "CERTAIN_STRIKE", label: "Golpe Certeiro" },
 ];
 
 const TARGET_TYPES = [
@@ -121,9 +122,9 @@ const EFFECT_NEEDS: Record<string, { duration: boolean; amount: boolean; stat: b
 };
 
 // Types that have an impact formula (dano/cura/valor)
-const HAS_IMPACT = new Set(["ATTACK", "REACT", "SUPPORT", "HEAL", "BUFF", "DEBUFF", "SPELL"]);
+const HAS_IMPACT = new Set(["ATTACK", "REACT", "SUPPORT", "HEAL", "BUFF", "DEBUFF", "SPELL", "CERTAIN_STRIKE"]);
 // Types where critical hits make sense
-const HAS_CRIT = new Set(["ATTACK", "REACT", "SPELL"]);
+const HAS_CRIT = new Set(["ATTACK", "REACT", "SPELL", "CERTAIN_STRIKE"]);
 
 /* ─── effect row (form-friendly, campos numéricos como string) ──── */
 
@@ -385,6 +386,9 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
     const showCrit    = HAS_CRIT.has(form.type);
     const showArea    = form.targetType === "ENEMY" || form.targetType === "MULTIPLE";
     const isContested = form.resolution === "CONTESTED";
+    // CERTAIN_STRIKE ignora `resolution` no servidor: sempre acerta e é
+    // sempre crítico, então o campo de resolução não faz sentido pra este tipo
+    const formTypeIsCertainStrike = form.type === "CERTAIN_STRIKE";
 
     // TRANSFORM (auto-gerado em POST .../forms, ou escolhido manualmente
     // aqui) não rola dado nem aplica efeito — só nome/descrição/forma-alvo
@@ -712,7 +716,8 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                     value={form.critThreshold}
                                     onChange={e => update("critThreshold", e.target.value)}
                                     fullWidth size="small"
-                                    helperText="Valor mínimo para crít. (0 = desativado)"
+                                    disabled={formTypeIsCertainStrike}
+                                    helperText={formTypeIsCertainStrike ? "Ignorado — Golpe Certeiro é sempre crítico" : "Valor mínimo para crít. (0 = desativado)"}
                                 />
                                 <TextField
                                     label="Multiplicador crítico"
@@ -731,6 +736,12 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     {/* ── Resolução ── */}
                     <Box>
                         <SectionLabel>Resolução</SectionLabel>
+                        {formTypeIsCertainStrike ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                                Golpe Certeiro sempre acerta e ignora defesa, teste resistido e reação
+                                (esquiva/bloqueio/contra-ataque) do alvo — este campo não se aplica a este tipo.
+                            </Typography>
+                        ) : (
                         <Stack direction="row" spacing={1.5}>
                             <TextField select label="Como resolve contra o alvo" value={form.resolution}
                                 onChange={e => update("resolution", e.target.value)} fullWidth size="small">
@@ -749,7 +760,8 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                 </TextField>
                             )}
                         </Stack>
-                        {isContested && (
+                        )}
+                        {!formTypeIsCertainStrike && isContested && (
                             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
                                 O alvo rola 1d20 + atributo escolhido; se tirar mais que o total desta habilidade, resiste. Não abre esquiva/bloqueio — o teste resistido já é a defesa.
                             </Typography>

@@ -26,6 +26,11 @@ enum ActionType {
   BUFF
   DEBUFF
   SUPPORT
+  // Ataque certeiro: sempre acerta e é sempre crítico, ignorando defesa,
+  // teste resistido e reação do alvo (esquiva/bloqueio/contra-ataque). Em
+  // troca, aplica automaticamente os efeitos SELF do preset (ex: debuff de
+  // atributo no próprio conjurador) — ver POST /roll.
+  CERTAIN_STRIKE
   // Assumir uma forma alternativa do personagem (ver Character.forms).
   // Preset gerado automaticamente pelo sistema (POST .../forms), não
   // selecionável manualmente no editor de habilidades — ver targetFormId.

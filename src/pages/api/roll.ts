@@ -44,7 +44,7 @@ function buildRollLog(charName: string, presetName: string, presetType: string, 
     if (hitNames.length === 0 && missNames.length === 0) {
         return `${charName} usou ${presetName}`;
     }
-    if (presetType !== ActionType.ATTACK) {
+    if (presetType !== ActionType.ATTACK && presetType !== ActionType.CERTAIN_STRIKE) {
         return `${charName} usou ${presetName} em ${joinNames([...hitNames, ...missNames])}`;
     }
     if (hitNames.length === 0) {
@@ -260,9 +260,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
        no front (que é facilmente dessincronizado por reload de página).
        requiresTurn=false = ação livre, não entra nesta checagem.
     ===================================================== */
-    if (turnId && preset.type !== ActionType.ATTACK && preset.requiresTurn) {
+    if (turnId && preset.type !== ActionType.ATTACK && preset.type !== ActionType.CERTAIN_STRIKE && preset.requiresTurn) {
         const existingMainAction = await prisma.rollResult.findFirst({
-            where: { turnId, preset: { requiresTurn: true, type: { not: ActionType.ATTACK } } },
+            where: { turnId, preset: { requiresTurn: true, type: { notIn: [ActionType.ATTACK, ActionType.CERTAIN_STRIKE] } } },
             select: { id: true },
         });
         if (existingMainAction) {
@@ -332,7 +332,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             presetEffectId: null,
             name: preset.name,
             effectType: preset.effectType ?? (
-                preset.type === ActionType.ATTACK ? EffectType.DAMAGE_OVER_TIME : EffectType.HEAL_OVER_TIME
+                preset.type === ActionType.ATTACK || preset.type === ActionType.CERTAIN_STRIKE
+                    ? EffectType.DAMAGE_OVER_TIME
+                    : EffectType.HEAL_OVER_TIME
             ),
             target: "TARGETS",
             value: preset.effectAmount,
@@ -405,7 +407,9 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     let attackerParticipant: { id: string; attacksUsed: number } | null = null;
     let campaignLimits: { reactionsPerRound: number | null } | null = null;
 
-    if (preset.type === ActionType.ATTACK && combatId) {
+    const isAttackLike = preset.type === ActionType.ATTACK || preset.type === ActionType.CERTAIN_STRIKE;
+
+    if (isAttackLike && combatId) {
         campaignLimits = await prisma.campaign.findUnique({
             where: { id: character.campaignId },
             select: { reactionsPerRound: true },
@@ -468,9 +472,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     const flatModifier = preset.modifier ?? 0;
     const attackTotal = attackRoll.total + attackAttributeBonus + flatModifier + rollModifier + pendingMod;
 
-    const isCritical = attackRoll.rolls.some(
-        r => r >= (preset.critThreshold ?? 999)
-    );
+    // CERTAIN_STRIKE é sempre crítico, independente do dado rolado
+    const isCritical =
+        preset.type === ActionType.CERTAIN_STRIKE ||
+        attackRoll.rolls.some(r => r >= (preset.critThreshold ?? 999));
 
     // SELF sempre mira em quem rolou. Com alvo (ENEMY/ALLY/MULTIPLE) mas sem
     // targetIds — típico de ação "fora de combate" usada como teste livre
@@ -552,7 +557,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 impactFormulaResolved: resolvedImpactFormula,
                 impactRolls: impactRolls.length > 0 ? impactRolls : undefined,
                 impactDroppedRolls: impactDroppedRolls.length > 0 ? impactDroppedRolls : undefined,
-                damage: preset.type === ActionType.ATTACK ? impactTotal : null,
+                damage: isAttackLike ? impactTotal : null,
                 healing: isHealType ? impactTotal : null,
                 success: null,
                 pendingReaction: false,
@@ -697,10 +702,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
             // Resolução: DEFENSE (clássica, só p/ ATTACK), CONTESTED (teste
             // resistido: alvo rola 1d20 + atributo contra o total do conjurador,
-            // empate favorece o conjurador) ou AUTO (aplica sem teste)
+            // empate favorece o conjurador) ou AUTO (aplica sem teste).
+            // CERTAIN_STRIKE ignora tudo isso — sempre acerta, independente do
+            // `resolution` configurado no preset (ver comentário do enum).
             let passedBaseDefense = true;
             let contestTotal: number | null = null;
-            if (preset.resolution === ResolutionType.CONTESTED) {
+            if (preset.type === ActionType.CERTAIN_STRIKE) {
+                passedBaseDefense = true;
+            } else if (preset.resolution === ResolutionType.CONTESTED) {
                 const contestRoll = rollDice("1d20");
                 contestTotal = contestRoll.total + getAttributeValue(target, contestAttribute);
                 passedBaseDefense = attackTotal >= contestTotal;
@@ -763,7 +772,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                 (combatParticipant.reactionsUsed ?? 0) >= targetReactionLimit;
 
             // Reações (esquiva/bloqueio/contra-ataque) só fazem sentido na
-            // resolução clássica por defesa — teste resistido já é a "reação"
+            // resolução clássica por defesa — teste resistido já é a "reação".
+            // CERTAIN_STRIKE nunca abre reação: ignora defesa/resistência do alvo.
             const shouldOpenReaction =
                 preset.type === ActionType.ATTACK &&
                 preset.resolution === ResolutionType.DEFENSE &&
@@ -789,7 +799,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             // Alvo "marcado" (DAMAGE_TAKEN_BONUS): recebe dano extra de qualquer
             // ataque enquanto o efeito durar. Fórmula (ex: 1d6) rolada por ataque.
             let targetImpact = impactTotal;
-            if (impactTotal && preset.type === ActionType.ATTACK) {
+            if (impactTotal && isAttackLike) {
                 let markBonus = 0;
                 for (const mark of (target.statusEffects ?? []).filter((e) => e.type === EffectType.DAMAGE_TAKEN_BONUS)) {
                     // Sem substituição de {{atributo}} aqui: a marca foi aplicada por
@@ -816,7 +826,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
             if (impactTotal) {
                 if (combatParticipant) {
-                    if (preset.type === ActionType.ATTACK && !shouldOpenReaction) {
+                    if (isAttackLike && !shouldOpenReaction) {
                         const currentTempHp = combatParticipant.tempHp ?? 0;
                         let remainingDamage = targetImpact ?? impactTotal;
                         let newTempHp = currentTempHp;
@@ -851,7 +861,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                         });
                     }
                 } else {
-                    if (preset.type === ActionType.ATTACK) {
+                    if (isAttackLike) {
                         afterLife = Math.max(0, target.life - (targetImpact ?? impactTotal));
                         await tx.character.update({
                             where: { id: targetId },
@@ -874,7 +884,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
                     beforeLife,
                     succeeded: true,
                     critical: isCritical,
-                    damageApplied: preset.type === ActionType.ATTACK ? targetImpact : null,
+                    damageApplied: isAttackLike ? targetImpact : null,
                     healingApplied: isHealType ? impactTotal : null,
                     targetDefense: contestTotal ?? effectiveDefense,
                 },
@@ -894,7 +904,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
             hitNames.push(target.name);
             if (impactTotal && impactTotal > 0 && !shouldOpenReaction) {
-                if (preset.type === ActionType.ATTACK) directDamageNames.push(target.name);
+                if (isAttackLike) directDamageNames.push(target.name);
                 else if (isHealType) directHealNames.push(target.name);
             }
 

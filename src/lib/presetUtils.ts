@@ -62,6 +62,7 @@ export const ACTION_COLORS: Record<ActionType, string> = {
   BUFF: "#60A5FA",        // Azul claro
   DEBUFF: "#F87171",      // Vermelho claro
   TRANSFORM: "#A78BFA",   // Roxo (mesma família do SKILL — ação de forma)
+  CERTAIN_STRIKE: "#DC2626", // Vermelho escuro — golpe certeiro
 };
 
 export const ACTION_ICONS: Record<ActionType, string> = {
@@ -75,6 +76,7 @@ export const ACTION_ICONS: Record<ActionType, string> = {
   BUFF: "⬆️",
   DEBUFF: "⬇️",
   TRANSFORM: "🜂",
+  CERTAIN_STRIKE: "🎯",
 };
 
 export const TARGET_NAMES: Record<TargetType, string> = {
@@ -95,6 +97,7 @@ export const ACTION_NAMES: Record<ActionType, string> = {
   BUFF: "Bonus",
   DEBUFF: "Penalidade",
   TRANSFORM: "Transformação",
+  CERTAIN_STRIKE: "Golpe Certeiro",
 };
 
 export function getActionColor(type: ActionType): string {
