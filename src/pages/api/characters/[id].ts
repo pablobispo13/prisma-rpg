@@ -99,6 +99,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       maxSanity,
       abilitySanityCostOverride,
       customAttributes,
+      skills,
     } = req.body;
 
     // Atributos customizados: merge parcial (só as keys enviadas mudam;
@@ -113,6 +114,20 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       customAttributesValue = {
         ...existing,
         ...sanitizeCustomAttributeValues(customAttributes, new Set(validDefs.map((a) => a.key))),
+      };
+    }
+
+    // Bônus de perícia: mesmo merge parcial, só keys de perícias da mesa
+    let skillsValue: Record<string, number> | undefined;
+    if (skills && typeof skills === "object") {
+      const validSkills = await prisma.skill.findMany({
+        where: { campaignId: character.campaignId },
+        select: { key: true },
+      });
+      const existing = (character.skills as Record<string, number> | null) ?? {};
+      skillsValue = {
+        ...existing,
+        ...sanitizeCustomAttributeValues(skills, new Set(validSkills.map((s) => s.key))),
       };
     }
 
@@ -156,6 +171,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         intellect,
         presence,
         ...(customAttributesValue !== undefined ? { customAttributes: customAttributesValue } : {}),
+        ...(skillsValue !== undefined ? { skills: skillsValue } : {}),
         baseDefense,
         history,
         notes,
@@ -221,6 +237,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           intellect: source.intellect,
           presence: source.presence,
           customAttributes: source.customAttributes ?? undefined,
+          skills: source.skills ?? undefined,
           baseDefense: source.baseDefense,
           maxReactionsPerRound: source.maxReactionsPerRound,
           maxAttacksPerRound: source.maxAttacksPerRound,

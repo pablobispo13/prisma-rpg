@@ -26,7 +26,7 @@ import { useCampaign, CampaignSummary } from "../../context/CampaignContext";
 import { campaignSchema, CampaignForm, joinSchema, JoinForm } from "../../validation/campaign";
 import { DEFAULT_DEFENSE_FORMULA, DEFAULT_MAX_LIFE_FORMULA } from "../../lib/characterCalculations";
 import { FORMULA_VARIABLES } from "../../lib/formula";
-import { CustomAttributeType } from "../../types/types";
+import { CustomAttributeType, SkillType, Character_Attributes } from "../../types/types";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 const EXPIRATION_OPTIONS = [
@@ -67,6 +67,11 @@ export default function MesasPage() {
   const [newAttrLabel, setNewAttrLabel] = useState("");
   const [newAttrDefault, setNewAttrDefault] = useState("0");
   const [attrSaving, setAttrSaving] = useState(false);
+
+  // Perícias da mesa (Furtividade, Medicina...) — CRUD próprio, atreladas a um atributo fixo
+  const [newSkillLabel, setNewSkillLabel] = useState("");
+  const [newSkillAttr, setNewSkillAttr] = useState("AGILITY");
+  const [skillSaving, setSkillSaving] = useState(false);
 
   // Admin: atribuir mesa a um mestre ao criar
   type AdminUserOption = {
@@ -229,6 +234,42 @@ export default function MesasPage() {
     setJumpToDay("");
     setNewAttrLabel("");
     setNewAttrDefault("0");
+    setNewSkillLabel("");
+  };
+
+  const handleAddSkill = async (seedDefaults = false) => {
+    if (!editTarget || (!seedDefaults && !newSkillLabel.trim())) return;
+    setSkillSaving(true);
+    try {
+      if (seedDefaults) {
+        const { data } = await api.post(`/campaigns/${editTarget.id}/skills`, { seedDefaults: true });
+        toast.success(data.created ? `${data.created} perícia(s) padrão adicionada(s)` : "Todas as perícias padrão já existem");
+        setEditTarget((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+      } else {
+        const { data } = await api.post(`/campaigns/${editTarget.id}/skills`, {
+          label: newSkillLabel.trim(),
+          baseAttribute: newSkillAttr,
+        });
+        toast.success(`Perícia "${data.label}" criada`);
+        setNewSkillLabel("");
+        setEditTarget((prev) => (prev ? { ...prev, skills: [...(prev.skills ?? []), data] } : prev));
+      }
+      await refresh();
+    } catch {}
+    finally { setSkillSaving(false); }
+  };
+
+  const handleDeleteSkill = async (skill: SkillType) => {
+    if (!editTarget) return;
+    if (!confirm(`Remover a perícia "${skill.label}"? O bônus dela será apagado de todos os personagens da mesa.`)) return;
+    try {
+      await api.delete(`/campaigns/${editTarget.id}/skills/${skill.id}`);
+      toast.success(`Perícia "${skill.label}" removida`);
+      setEditTarget((prev) =>
+        prev ? { ...prev, skills: (prev.skills ?? []).filter((s) => s.id !== skill.id) } : prev
+      );
+      await refresh();
+    } catch {}
   };
 
   const handleAddCustomAttribute = async () => {
@@ -698,6 +739,75 @@ export default function MesasPage() {
                   Adicionar
                 </Button>
               </Stack>
+
+              <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
+              <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>
+                Perícias
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#7a7f95" }}>
+                Testes fora de combate atrelados a um atributo. A rolagem é 1d20 + atributo base + bônus
+                da perícia (definido na ficha de cada personagem; sem bônus = 0).
+              </Typography>
+              {editTarget && (editTarget.skills ?? []).length > 0 && (
+                <List dense disablePadding>
+                  {(editTarget.skills ?? []).map((skill) => (
+                    <ListItem
+                      key={skill.id}
+                      disableGutters
+                      secondaryAction={
+                        <IconButton edge="end" size="small" onClick={() => handleDeleteSkill(skill)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText
+                        primary={skill.label}
+                        secondary={Character_Attributes.find((a) => a.key.toUpperCase() === skill.baseAttribute)?.label}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Nome da nova perícia"
+                  placeholder="Ex: Furtividade"
+                  value={newSkillLabel}
+                  onChange={(e) => setNewSkillLabel(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  size="small"
+                  label="Atributo"
+                  value={newSkillAttr}
+                  onChange={(e) => setNewSkillAttr(e.target.value)}
+                  sx={{ minWidth: 140 }}
+                >
+                  {Character_Attributes.map((a) => (
+                    <MenuItem key={a.key} value={a.key.toUpperCase()}>{a.label}</MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={!newSkillLabel.trim() || skillSaving}
+                  onClick={() => handleAddSkill()}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  Adicionar
+                </Button>
+              </Stack>
+              <Button
+                type="button"
+                size="small"
+                disabled={skillSaving}
+                onClick={() => handleAddSkill(true)}
+                sx={{ alignSelf: "flex-start" }}
+              >
+                Adicionar perícias padrão
+              </Button>
 
               <Divider sx={{ borderColor: "rgba(107,122,219,0.20)" }} />
               <Typography variant="subtitle2" sx={{ color: "#8B9DFF" }}>

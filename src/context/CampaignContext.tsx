@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "./AuthContext";
-import { CustomAttributeType } from "../types/types";
+import { CustomAttributeType, SkillType } from "../types/types";
 
 export type CampaignInvite = {
   id: string;
@@ -28,6 +28,7 @@ export type CampaignSummary = {
   worldDay: number | null;
   abilitySanityCost: number | null;
   customAttributes: CustomAttributeType[];
+  skills?: SkillType[];
   masterId: string;
   master: { id: string; username: string };
   members: { id: string; user: { id: string; username: string } }[];

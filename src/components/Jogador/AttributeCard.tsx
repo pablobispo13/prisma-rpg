@@ -18,7 +18,7 @@ type Props = {
   onRolled?: () => void;
 };
 
-const attributeConfig: Record<
+export const attributeConfig: Record<
   string,
   { icon: React.ReactNode; color: string; label: string }
 > = {

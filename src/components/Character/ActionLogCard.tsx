@@ -144,6 +144,11 @@ export function ActionLogCard({ actionLog }: Props) {
             Habilidade: <span style={{ color: "#aaa" }}>{roll.preset.name}</span>
           </Typography>
         )}
+        {roll?.skillLabel && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+            Perícia: <span style={{ color: "#aaa" }}>{roll.skillLabel}</span>
+          </Typography>
+        )}
       </CardContent>
     </Card>
   );

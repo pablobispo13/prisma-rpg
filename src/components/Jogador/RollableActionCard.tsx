@@ -9,6 +9,8 @@ import api from "../../lib/api";
 type Props = {
   characterId: string;
   actionPresetId?: string;
+  // Teste de perícia (alternativa ao preset) — ver POST /roll com skillKey
+  skillKey?: string;
   icon: React.ReactNode;
   color: string;
   label: string;
@@ -34,6 +36,7 @@ type Props = {
 export function RollableActionCard({
   characterId,
   actionPresetId,
+  skillKey,
   icon,
   color,
   label,
@@ -46,14 +49,17 @@ export function RollableActionCard({
   const [rolling, setRolling] = useState(false);
   const [result, setResult] = useState<number | null>(null);
 
-  const clickable = !!actionPresetId && !loading;
+  const clickable = !!(actionPresetId || skillKey) && !loading;
   const isRow = layout === "row";
 
   async function handleRoll() {
     if (!clickable || rolling) return;
     setRolling(true);
     try {
-      const res = await api.post("/roll", { actionPresetId, characterId });
+      const res = await api.post(
+        "/roll",
+        actionPresetId ? { actionPresetId, characterId } : { skillKey, characterId }
+      );
       setResult(res.data.roll.total);
       setTimeout(() => setResult(null), 6000);
       onRolled?.();

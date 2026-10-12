@@ -38,6 +38,8 @@ import { ActionLogCard } from "./ActionLogCard";
 import { CharacterHeaderCard } from "./CharacterHeaderCard";
 import { CharacterNotesModal } from "./CharacterNotesModal";
 import { AttributeCard } from "../Jogador/AttributeCard";
+import { CharacterSkillsModal } from "./CharacterSkillsModal";
+import { SkillsCard } from "../Jogador/SkillsCard";
 import { RollableActionCard } from "../Jogador/RollableActionCard";
 import { getActionColor, getActionIcon } from "../../lib/presetUtils";
 import { LifeBarCard } from "../Jogador/LifeBarCard";
@@ -63,6 +65,7 @@ export function CharacterSheet({
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [editStatsOpen, setEditStatsOpen] = useState(false);
   const [notesModalField, setNotesModalField] = useState<"history" | "notes" | null>(null);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const { activeCampaign } = useCampaign();
   const masterId = activeCampaign?.masterId ?? null;
@@ -313,6 +316,7 @@ export function CharacterSheet({
               }}
               onHistoryAction={() => setNotesModalField("history")}
               onNotesAction={() => setNotesModalField("notes")}
+              onSkillsAction={canEdit ? () => setSkillsOpen(true) : undefined}
               canSwitchForm={canEdit}
               onFormSwitched={onFormSwitched}
             />
@@ -332,6 +336,23 @@ export function CharacterSheet({
                 loading={loading}
                 character={character}
                 presets={actionPresets}
+                onRolled={() => {
+                  getCharacter();
+                  getActionLogs();
+                }}
+              />
+            </Section>
+
+            {/* Testes rápidos de perícia — só as que o personagem possui
+                (bônus ≠ 0); pontos atribuídos na modal "Perícias" do cabeçalho */}
+            <Section
+              title="Perícias"
+              collapsible
+              storageKey={`sheet-section-skills-${character.id}`}
+            >
+              <SkillsCard
+                loading={loading}
+                character={character}
                 onRolled={() => {
                   getCharacter();
                   getActionLogs();
@@ -582,6 +603,13 @@ export function CharacterSheet({
           character={character}
           canEdit={canEdit}
           onClose={() => setNotesModalField(null)}
+          onSaved={getCharacter}
+        />
+
+        <CharacterSkillsModal
+          open={skillsOpen}
+          character={character}
+          onClose={() => setSkillsOpen(false)}
           onSaved={getCharacter}
         />
       </Box>

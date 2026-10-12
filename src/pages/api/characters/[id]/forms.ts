@@ -63,6 +63,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         vigor: source.vigor,
         intellect: source.intellect,
         presence: source.presence,
+        skills: source.skills ?? undefined,
         baseDefense: source.baseDefense,
         maxReactionsPerRound: source.maxReactionsPerRound,
         maxAttacksPerRound: source.maxAttacksPerRound,

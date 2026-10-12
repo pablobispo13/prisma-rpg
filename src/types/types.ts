@@ -31,6 +31,8 @@ export type Character = {
     presence: number;
     // Atributos customizados da mesa (CustomAttribute.key -> valor)
     customAttributes?: Record<string, number> | null;
+    // Bônus de perícia (Skill.key -> bônus; ausente = 0)
+    skills?: Record<string, number> | null;
 
     // Overrides dos limites da mesa (null = usa o da campanha)
     maxReactionsPerRound?: number | null;
@@ -160,6 +162,8 @@ export type Roll = {
     // Fórmula de impacto já com {{atributo}} resolvido no momento da rolagem
     // (ex: "1d6+8") — preferir a esta em vez de preset.impactFormula "cru"
     impactFormulaResolved?: string | null;
+    // Teste de perícia (rolagem sem preset)
+    skillLabel?: string | null;
     createdAt?: string;
     preset?: ActionPresetType | null;
     reactionType?: "DODGE" | "COUNTER_ATTACK" | "BLOCK" | "SKIP";
@@ -191,6 +195,17 @@ export type CustomAttributeType = {
     key: string;
     label: string;
     defaultValue: number;
+    sortOrder: number;
+};
+
+// Perícia da mesa (mestre define em Minhas Mesas > Editar mesa), atrelada a
+// um atributo fixo. Teste = 1d20 + atributo base + bônus do personagem.
+export type SkillType = {
+    id: string;
+    key: string;
+    label: string;
+    baseAttribute: "STRENGTH" | "AGILITY" | "VIGOR" | "INTELLECT" | "PRESENCE";
+    description?: string | null;
     sortOrder: number;
 };
 

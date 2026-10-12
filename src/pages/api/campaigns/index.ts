@@ -32,6 +32,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           orderBy: { createdAt: "desc" },
         },
         customAttributes: { orderBy: { sortOrder: "asc" } },
+        skills: { orderBy: { sortOrder: "asc" } },
         _count: { select: { characters: true, combats: true } },
       },
     });

@@ -183,6 +183,7 @@ model Campaign {
   characters       Character[]
   combats          Combat[]
   customAttributes CustomAttribute[]
+  skills           Skill[]
 }
 
 model CampaignMember {
@@ -239,6 +240,29 @@ model CustomAttribute {
 }
 
 ///////////////////////
+// PERÍCIA (por mesa)
+///////////////////////
+
+// Perícia definida pelo mestre (ex: Furtividade, Medicina), atrelada a um
+// dos 5 atributos fixos. Usada em testes fora de combate: a rolagem soma
+// 1d20 + atributo base + bônus da perícia no personagem (ver POST /roll com
+// skillKey). O bônus de cada personagem fica em Character.skills.
+model Skill {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  key           String
+  label         String
+  baseAttribute String // STRENGTH | AGILITY | VIGOR | INTELLECT | PRESENCE
+  description   String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  campaignId String   @db.ObjectId
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, key])
+}
+
+///////////////////////
 // CHARACTER
 ///////////////////////
 
@@ -260,6 +284,10 @@ model Character {
   // novo é criado na mesa (ver POST /campaigns/[id]/attributes). Chave
   // ausente = trata como 0 (ver src/lib/attributes.ts::getAttributeValue).
   customAttributes Json?
+
+  // Bônus de perícia do personagem: { [Skill.key]: bônus }. Chave ausente =
+  // 0 (perícia não treinada) — não precisa de backfill ao criar perícias.
+  skills Json?
 
   baseDefense Int @default(0)
 
@@ -531,6 +559,10 @@ model RollResult {
   // pela UI no lugar do preset.impactFormula "cru" (que pode ter mudado ou
   // ter {{atributo}} não resolvido)
   impactFormulaResolved String?
+
+  // Teste de perícia (rolagem sem preset): nome da perícia no momento da
+  // rolagem, pra exibir no histórico mesmo se ela for renomeada/removida
+  skillLabel String?
 
   success  Boolean? // Será definido após reação do alvo
   critical Boolean

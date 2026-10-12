@@ -27,6 +27,7 @@ type Roll = {
     total: number;
     impactRolls: number[];
     impactFormulaResolved: string | null;
+    skillLabel?: string | null;
 
     success: boolean;
     critical: boolean;
@@ -147,7 +148,7 @@ export default function RecentRollsScreen() {
                             <RollInfoCard
                                 key={roll.id}
                                 characterName={roll.character.name}
-                                actionName={roll.preset?.name}
+                                actionName={roll.preset?.name ?? roll.skillLabel ?? undefined}
                                 actionType={roll.preset?.type}
                                 diceFormula={roll.diceRolled}
                                 diceRolls={roll.rolls}

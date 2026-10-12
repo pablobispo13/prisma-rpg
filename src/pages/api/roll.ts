@@ -6,6 +6,7 @@ import { LogType, EffectType, ActionType, ResolutionType, StatusType } from "@pr
 import { getAttributeValue, substituteAttributeVariables, formulaReferencesAttribute } from "../../lib/attributes";
 import { notifyCombatUpdate } from "../../lib/pusher";
 import { canActOnCharacter } from "../../lib/campaignAccess";
+import { BASE_ATTRIBUTE_LABEL, SKILL_DICE_FORMULA, getSkillBonus } from "../../lib/skills";
 
 function joinNames(names: string[]): string {
     if (names.length === 1) return names[0];
@@ -142,15 +143,16 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         targetIds = [],
         combatId,
         turnId,
-        selectedEffectIds
+        selectedEffectIds,
+        skillKey
     } = req.body;
 
     if (!characterId)
         return res.status(400).json({ message: "characterId obrigatório" });
 
-    if (!actionPresetId && !diceFormula)
+    if (!actionPresetId && !diceFormula && !skillKey)
         return res.status(400).json({
-            message: "Informe actionPresetId ou diceFormula"
+            message: "Informe actionPresetId, diceFormula ou skillKey"
         });
 
     if (turnId) {
@@ -227,6 +229,89 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             return created;
         });
 
+        return res.status(201).json({ roll });
+    }
+
+
+    /* =====================================================
+       TESTE DE PERÍCIA (SEM PRESET)
+       1d20 + atributo base (com STAT_BUFF/DEBUFF ativos) + bônus da
+       perícia no personagem + ROLL_BONUS/PENALTY + vantagem pendente.
+       Sem alvo, sem efeito — é um teste livre, normalmente fora de combate.
+    ===================================================== */
+
+    if (skillKey && !actionPresetId) {
+
+        const skill = await prisma.skill.findUnique({
+            where: { campaignId_key: { campaignId: character.campaignId, key: String(skillKey) } },
+        });
+        if (!skill)
+            return res.status(404).json({ message: "Perícia não encontrada nesta mesa" });
+
+        const activeEffects = await prisma.characterEffect.findMany({
+            where: { characterId: character.id, remainingTurns: { gt: 0 } },
+        });
+        const statBonus = activeEffects
+            .filter(e => e.statAffected === skill.baseAttribute)
+            .reduce((sum, e) => sum + (e.type === "STAT_DEBUFF" ? -Math.abs(e.value) : e.value), 0);
+        const effectRollBonus = activeEffects
+            .filter(e => e.type === "ROLL_BONUS" || e.type === "ROLL_PENALTY")
+            .reduce((sum, e) => sum + (e.type === "ROLL_PENALTY" ? -Math.abs(e.value) : e.value), 0);
+
+        const attributeValue = getAttributeValue(character, skill.baseAttribute) + statBonus;
+        const skillBonus = getSkillBonus(character, skill.key);
+        const pendingMod = character.pendingRollModifier ?? 0;
+
+        const dice = rollDice(SKILL_DICE_FORMULA);
+        const modifier = attributeValue + skillBonus + effectRollBonus + pendingMod;
+        const total = dice.total + modifier;
+        const critical = dice.rolls.some(r => r >= 20);
+
+        const attrLabel = BASE_ATTRIBUTE_LABEL[skill.baseAttribute] ?? skill.baseAttribute;
+        const breakdown = [
+            `${SKILL_DICE_FORMULA} (${dice.rolls.join(", ")})`,
+            `${attributeValue} ${attrLabel}`,
+            `${skillBonus} perícia`,
+            ...(effectRollBonus ? [`${effectRollBonus} efeitos`] : []),
+        ].join(" + ");
+
+        const roll = await prisma.$transaction(async (tx) => {
+            const created = await tx.rollResult.create({
+                data: {
+                    characterId: character.id,
+                    presetId: null,
+                    combatId: combatId ?? null,
+                    turnId: turnId ?? null,
+                    targetIds: [character.id],
+                    diceRolled: SKILL_DICE_FORMULA,
+                    rolls: dice.rolls,
+                    droppedRolls: dice.droppedRolls,
+                    modifier,
+                    total,
+                    critical,
+                    success: null,
+                    skillLabel: skill.label,
+                    pendingReaction: false,
+                    reacted: false,
+                    reactionType: null,
+                },
+            });
+
+            await tx.actionLog.create({
+                data: {
+                    type: LogType.ROLL,
+                    message: `${character.name} testou ${skill.label}: ${breakdown}${rollModifierSuffix(pendingMod)} = ${total}`,
+                    characterId: character.id,
+                    rollId: created.id,
+                    combatId: combatId ?? null,
+                    turnId: turnId ?? null,
+                },
+            });
+
+            return created;
+        });
+
+        if (combatId) notifyCombatUpdate(combatId);
         return res.status(201).json({ roll });
     }
 

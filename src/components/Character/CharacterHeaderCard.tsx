@@ -16,6 +16,7 @@ import { Character } from "../../types/types";
 import EditIcon from "@mui/icons-material/Edit";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
+import PsychologyIcon from "@mui/icons-material/Psychology";
 import ShieldIcon from "@mui/icons-material/Shield";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import { deepOrange } from "@mui/material/colors";
@@ -32,6 +33,7 @@ type Props = {
   onEditAction?: () => void;
   onHistoryAction?: () => void;
   onNotesAction?: () => void;
+  onSkillsAction?: () => void;
   canSwitchForm?: boolean;
   onFormSwitched?: () => void;
 };
@@ -42,6 +44,7 @@ export function CharacterHeaderCard({
   onEditAction,
   onHistoryAction,
   onNotesAction,
+  onSkillsAction,
   canSwitchForm = false,
   onFormSwitched,
 }: Props) {
@@ -179,6 +182,19 @@ export function CharacterHeaderCard({
                     }}
                   >
                     Anotações
+                  </Button>
+                )}
+                {onSkillsAction && (
+                  <Button
+                    size="small"
+                    startIcon={<PsychologyIcon />}
+                    onClick={onSkillsAction}
+                    sx={{
+                      whiteSpace: "nowrap",
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
+                    Perícias
                   </Button>
                 )}
                 {onEditAction && (
