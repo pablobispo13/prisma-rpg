@@ -7,6 +7,8 @@ type DiceLogoProps = {
   showNumber?: boolean;
   /** Aplica o brilho (drop-shadow) característico da marca. */
   glow?: boolean;
+  /** Valor exibido na face central (default "20"). Usado pelo DiceLoader. */
+  value?: number | string;
 };
 
 /**
@@ -17,6 +19,7 @@ export default function DiceLogo({
   size = 28,
   showNumber = true,
   glow = true,
+  value = 20,
 }: DiceLogoProps) {
   // useId evita colisão de ids de gradiente quando há vários logos na tela.
   const uid = useId().replace(/:/g, "");
@@ -92,7 +95,7 @@ export default function DiceLogo({
           fontWeight={800}
           fill="#A6B4FF"
         >
-          20
+          {value}
         </text>
       )}
     </svg>

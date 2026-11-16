@@ -1,12 +1,10 @@
 import {
     ThemeProvider,
     createTheme,
-    useMediaQuery,
 } from "@mui/material";
 import React, {
     createContext,
     ReactElement,
-    useEffect,
     useState,
 } from "react";
 
@@ -29,29 +27,14 @@ interface ThemeContextProviderInterface {
 export const ThemeContextProvider: React.FC<ThemeContextProviderInterface> = ({
     children,
 }) => {
-    // Estado inicial FIXO → SSR e client começam iguais
+    // Sempre escuro: todas as telas têm fundo escuro fixo (#0e0e1a etc.), e
+    // seguir o tema do sistema deixava textos pretos sobre fundo escuro em
+    // celulares no modo claro. O localStorage "theme" antigo também é
+    // ignorado — ele era gravado automaticamente com o tema do sistema, então
+    // quem usava modo claro ficaria preso em "light".
+    // toggleColorMode continua existindo (ButtonTheme) para um futuro tema
+    // claro de verdade, mas vale só na sessão.
     const [mode, setMode] = useState<ThemeType>("dark");
-
-    // Só roda no client
-    const prefersDarkMode = useMediaQuery(
-        "(prefers-color-scheme: dark)",
-        { noSsr: true }
-    );
-
-    // Hidratação segura
-    useEffect(() => {
-        const storedTheme = localStorage.getItem("theme");
-
-        if (storedTheme === "light" || storedTheme === "dark") {
-            setMode(storedTheme);
-        } else {
-            setMode(prefersDarkMode ? "dark" : "light");
-        }
-    }, [prefersDarkMode]);
-
-    useEffect(() => {
-        localStorage.setItem("theme", mode);
-    }, [mode]);
 
     const toggleColorMode = () => {
         setMode((prev) => (prev === "light" ? "dark" : "light"));
@@ -71,11 +54,15 @@ export const ThemeContextProvider: React.FC<ThemeContextProviderInterface> = ({
                     paper: {
                         [mobile]: {
                             // Default do MUI é margin 32px — no celular
-                            // sobrava ~300px de largura útil pro conteúdo
-                            margin: 8,
-                            width: "calc(100% - 16px)",
-                            maxWidth: "calc(100% - 16px) !important",
-                            maxHeight: "calc(100% - 16px)",
+                            // sobrava ~300px de largura útil pro conteúdo.
+                            // :not(fullScreen): sem isso esta regra anulava o
+                            // fullScreen dos modais longos (ficha, editor de habilidade)
+                            "&:not(.MuiDialog-paperFullScreen)": {
+                                margin: 8,
+                                width: "calc(100% - 16px)",
+                                maxWidth: "calc(100% - 16px) !important",
+                                maxHeight: "calc(100% - 16px)",
+                            },
                         },
                     },
                 },

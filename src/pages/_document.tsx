@@ -16,7 +16,10 @@ export default function Document() {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Prisma RPG" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* "black" (e não black-translucent): o iOS reserva a faixa da barra
+            de status em vez de desenhar o app por baixo dela — com
+            translucent a AppBar ficava parcialmente coberta no PWA */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="black" />
         <meta name="format-detection" content="telephone=no" />
       </Head>
       <body style={{ background: "#0e0e1a" }}>

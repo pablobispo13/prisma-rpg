@@ -18,6 +18,9 @@ type LayoutProps = {
 // Altura da AppBar (sem a área do notch). Telas de altura fixa (combate,
 // mesa do mestre) descontam via var(--app-bar-h) — ver FULL_HEIGHT em lib/layout.ts
 const APP_BAR_HEIGHT = 50;
+// Celular deitado (~300px de altura útil): AppBar mais baixa
+const SHORT_LANDSCAPE = "@media (orientation: landscape) and (max-height: 500px)";
+const APP_BAR_HEIGHT_SHORT = 40;
 
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth();
@@ -38,6 +41,9 @@ export default function Layout({ children }: LayoutProps) {
           background: "#0e0e1a",
           // Lido por CombatScreen/MesaMestre pra ocupar exatamente o resto da tela
           "--app-bar-h": user ? `calc(${APP_BAR_HEIGHT}px + env(safe-area-inset-top))` : "0px",
+          [SHORT_LANDSCAPE]: {
+            "--app-bar-h": user ? `calc(${APP_BAR_HEIGHT_SHORT}px + env(safe-area-inset-top))` : "0px",
+          },
           // PWA instalado em paisagem: conteúdo não fica embaixo do notch lateral
           pl: "env(safe-area-inset-left)",
           pr: "env(safe-area-inset-right)",
@@ -62,6 +68,10 @@ export default function Layout({ children }: LayoutProps) {
               minHeight: `${APP_BAR_HEIGHT}px !important`,
               height: APP_BAR_HEIGHT,
               px: { xs: 1.5, md: 3 },
+              // Nunca deixa item da barra vazar pra fora da tela (seria cortado
+              // pelo overflow-x do body)
+              overflow: "hidden",
+              [SHORT_LANDSCAPE]: { height: APP_BAR_HEIGHT_SHORT, minHeight: `${APP_BAR_HEIGHT_SHORT}px !important` },
             }}
           >
             {/* Logo — no celular só o dado; o nome da mesa já aparece no seletor.

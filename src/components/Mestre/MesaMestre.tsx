@@ -25,7 +25,6 @@ import {
   MenuItem,
 } from "@mui/material";
 import LiveTvIcon from "@mui/icons-material/LiveTv";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import HistoryIcon from "@mui/icons-material/History";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SearchIcon from "@mui/icons-material/Search";
@@ -47,6 +46,8 @@ import { CombatHistory } from "../Combat/CombatHistory";
 import Head from "next/head";
 import { FULL_HEIGHT } from "../../lib/layout";
 import { openAppPage } from "../../lib/pwa";
+import Link from "next/link";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 
 /* =========================
    NEW ENEMY DIALOG
@@ -420,8 +421,10 @@ export default function MesaMestre() {
                         </CardContent>
                         <CardActions>
                           <Button
-                            fullWidth variant="outlined" endIcon={<OpenInNewIcon />}
-                            onClick={() => openAppPage(`/protected/combat?combatId=${c.id}`)}
+                            fullWidth variant="outlined" endIcon={<ArrowForwardIcon />}
+                            // Mesma aba — ao encerrar, o combate volta para esta tela
+                            component={Link}
+                            href={`/protected/combat?combatId=${c.id}`}
                           >
                             Abrir combate
                           </Button>

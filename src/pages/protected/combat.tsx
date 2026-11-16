@@ -6,6 +6,7 @@ import api from "../../lib/api";
 import { useCampaign } from "../../context/CampaignContext";
 import CombatScreen from "../../components/Combat/CombatScreen";
 import { toast } from "react-toastify";
+import DiceLoader from "../../components/DiceLoader";
 
 export default function CombatPage() {
     const params = useSearchParams();
@@ -54,7 +55,7 @@ export default function CombatPage() {
     }, [combatId, loading, activeCampaign, campaigns, setActiveCampaign, router]);
 
     if (!combatId) return <>Combate não encontrado</>;
-    if (resolving || loading) return <>Carregando combate…</>;
+    if (resolving || loading) return <DiceLoader message="Preparando o combate" />;
 
     return <CombatScreen key={activeCampaign?.id} combatId={combatId} />;
 }

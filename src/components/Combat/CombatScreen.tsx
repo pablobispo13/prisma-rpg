@@ -40,6 +40,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import CasinoIcon from "@mui/icons-material/Casino";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
+import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
@@ -51,7 +52,7 @@ import api from "../../lib/api";
 import { useRouter } from "next/router";
 import { ActionPresetType } from "../../types/types";
 import { previewFormulaVariables, buildAttributeValueMap, formulaReferencesAttribute } from "../../lib/presetUtils";
-import { CombatTimelineV2 } from "../Log/CombatTimelineV2";
+import { CombatTimelineV2, countTimelineEntries } from "../Log/CombatTimelineV2";
 import { DiceInputRoller } from "../DiceInputRoller";
 import Head from "next/head";
 import { useEffect, useRef, useState } from "react";
@@ -62,6 +63,8 @@ import { useCampaign } from "../../context/CampaignContext";
 import { isNpc as checkIsNpc } from "../../lib/isNpc";
 import { Reorder, motion, AnimatePresence, useDragControls } from "framer-motion";
 import { FULL_HEIGHT } from "../../lib/layout";
+import { CombatSheetDialog } from "./CombatSheetDialog";
+import DiceLoader from "../DiceLoader";
 
 /* =========================
    HELPERS
@@ -445,17 +448,35 @@ function CombatScreenContent() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isTouch = useMediaQuery("(pointer: coarse)");
+  // Celular deitado: altura útil ~300px. Empilhar barra de ações embaixo
+  // não deixava espaço nenhum pros participantes — nesse caso as ações
+  // viram uma coluna à direita e o cabeçalho/abas ficam mais baixos
+  const isShortLandscape = useMediaQuery("(orientation: landscape) and (max-height: 500px)");
+  const sideActions = isMobile && isShortLandscape;
+  const mobileActionBtnSx = isMobile ? { textTransform: "none", fontSize: 14, px: 1.5, py: 0.75, lineHeight: 1.3 } as const : {};
   const [mobileTab, setMobileTab] = useState<"order" | "field" | "log">("order");
   const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
   const [diceAnchor, setDiceAnchor] = useState<HTMLElement | null>(null);
+  // Ficha dentro do combate (jogador: a própria; mestre: qualquer participante)
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetCharacterId, setSheetCharacterId] = useState<string | null>(null);
+  function openSheet(characterId?: string | null) {
+    setSheetCharacterId(characterId ?? null);
+    setSheetOpen(true);
+  }
 
   // Logs chegados enquanto a aba Log não estava aberta (badge na aba)
-  const logCount = combat?.logs?.length ?? 0;
-  const [seenLogCount, setSeenLogCount] = useState(logCount);
+  // Conta só o que a timeline mostra (sem início/fim de turno e com a
+  // rolagem agrupada). null = combate ainda não carregou: o histórico que
+  // já existia ao abrir a tela conta como visto — só o que chegar depois
+  // acende o badge.
+  const logCount = countTimelineEntries(combat?.logs);
+  const [seenLogCount, setSeenLogCount] = useState<number | null>(null);
   useEffect(() => {
-    if (!isMobile || mobileTab === "log") setSeenLogCount(logCount);
-  }, [isMobile, mobileTab, logCount]);
-  const unseenLogs = Math.max(0, logCount - seenLogCount);
+    if (!combat) return;
+    if (seenLogCount === null || !isMobile || mobileTab === "log") setSeenLogCount(logCount);
+  }, [combat, seenLogCount, isMobile, mobileTab, logCount]);
+  const unseenLogs = seenLogCount === null ? 0 : Math.max(0, logCount - seenLogCount);
 
   useEffect(() => {
     if (actionUsed || !isMyTurn) setSelectedPresetId(null);
@@ -476,11 +497,13 @@ function CombatScreenContent() {
     if (fullscreenVideoRef.current) fullscreenVideoRef.current.srcObject = screenShareStream;
   }, [screenShareStream, battleFullscreen]);
 
-  // Redireciona jogadores automaticamente quando o combate é encerrado
+  // Combate encerrado: jogador volta automaticamente para a ficha do
+  // personagem (/protected/ mostra a ficha para jogadores). replace e não
+  // push — o "voltar" do navegador/celular não deve cair no combate encerrado
   useEffect(() => {
     if (combat?.active === false && !isMaster) {
       toast.info("O combate foi encerrado pelo mestre.");
-      router.push("/protected/");
+      router.replace("/protected/");
     }
   }, [combat?.active]);
 
@@ -651,7 +674,7 @@ function CombatScreenContent() {
     URL.revokeObjectURL(url);
   }
 
-  if (!combat || !combat.participants?.length) return <>Carregando combate...</>;
+  if (!combat || !combat.participants?.length) return <DiceLoader message="Preparando o combate" />;
 
   const ordered = [...combat.participants].sort((a: any, b: any) => a.turnOrder - b.turnOrder);
   const activeParticipant = ordered[combat.currentTurnIndex];
@@ -758,7 +781,7 @@ function CombatScreenContent() {
       <Head><title>Tela de combate</title></Head>
 
       {/* ===== HEADER ===== */}
-      <Box sx={{ borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: { xs: 1.5, md: 3 }, height: { xs: 52, md: 80 }, flexShrink: 0 }}>
+      <Box sx={{ borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: { xs: 1.5, md: 3 }, height: sideActions ? 40 : { xs: 52, md: 80 }, flexShrink: 0 }}>
         <Stack direction="row" spacing={{ xs: 1, md: 3 }} alignItems="center" minWidth={0}>
           <Typography variant="h6" noWrap sx={{ fontSize: { xs: "1.05rem", md: "1.25rem" } }}>Round {combat.round}</Typography>
           {isMobile ? (
@@ -776,6 +799,15 @@ function CombatScreenContent() {
         {/* Celular: rolador livre num popover e ações do mestre num menu "⋮" */}
         {isMobile && (
           <Stack direction="row" spacing={0.5} alignItems="center" flexShrink={0}>
+            {(isMaster || myParticipant) && (
+              <IconButton
+                aria-label={isMaster ? "Fichas do combate" : "Minha ficha"}
+                onClick={() => openSheet(isMaster ? activeCharacter.id : myParticipant?.character.id)}
+                sx={{ color: "#8B9DFF" }}
+              >
+                <AssignmentIndIcon />
+              </IconButton>
+            )}
             {!isMaster && (
               <IconButton aria-label="Rolar dados" onClick={(e) => setDiceAnchor(e.currentTarget)} sx={{ color: "#8B9DFF" }}>
                 <CasinoIcon />
@@ -820,6 +852,16 @@ function CombatScreenContent() {
         )}
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{ display: isMobile ? "none" : "flex" }}>
+          {(isMaster || myParticipant) && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AssignmentIndIcon />}
+              onClick={() => openSheet(isMaster ? activeCharacter.id : myParticipant?.character.id)}
+            >
+              {isMaster ? "Fichas" : "Minha ficha"}
+            </Button>
+          )}
           {isMaster && (
             <Tooltip title="Exportar log">
               <IconButton size="small" onClick={exportLog} sx={{ color: "#aaa" }}>
@@ -848,8 +890,8 @@ function CombatScreenContent() {
           onChange={(_, v) => setMobileTab(v)}
           variant="fullWidth"
           sx={{
-            minHeight: 42, flexShrink: 0, borderBottom: "1px solid #333",
-            "& .MuiTab-root": { minHeight: 42, py: 0.5, fontSize: 13, textTransform: "none", color: "#888" },
+            minHeight: sideActions ? 34 : 42, flexShrink: 0, borderBottom: "1px solid #333",
+            "& .MuiTab-root": { minHeight: sideActions ? 34 : 42, py: 0.5, fontSize: 13, textTransform: "none", color: "#888" },
             "& .Mui-selected": { color: "#8B9DFF !important" },
           }}
         >
@@ -859,12 +901,16 @@ function CombatScreenContent() {
         </Tabs>
       )}
 
+      {/* Conteúdo + barra de ações: empilhados (retrato/desktop) ou lado a
+          lado (celular deitado) */}
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: sideActions ? "row" : "column" }}>
+
       {/* ===== CENTRO ===== */}
       {/* Desktop: 3 colunas lado a lado. Celular: uma aba visível por vez —
           as outras ficam montadas com display:none (o <video> da tela
           compartilhada e as animações de dano não reiniciam ao trocar) */}
       <Box sx={{
-        flex: 1, minHeight: 0, overflow: "hidden",
+        flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden",
         display: isMobile ? "flex" : "grid",
         flexDirection: "column",
         gridTemplateColumns: { md: "240px 1fr 320px", lg: "280px 1fr 400px" },
@@ -991,6 +1037,13 @@ function CombatScreenContent() {
                             )}
                             {isNpc && <Chip label="NPC" size="small" sx={{ fontSize: 9, height: 16, bgcolor: "#374151", color: "#9ca3af" }} />}
                             {isMaster && (
+                              <Tooltip title="Ver ficha">
+                                <IconButton size="small" aria-label="Ver ficha" sx={{ p: isTouch ? 0.75 : 0.25 }} onClick={(e) => { e.stopPropagation(); openSheet(p.character.id); }}>
+                                  <AssignmentIndIcon sx={{ fontSize: isTouch ? 16 : 13, color: "#8B9DFF" }} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            {isMaster && (
                               <IconButton size="small" aria-label="Ajustar HP" sx={{ p: isTouch ? 0.75 : 0.25 }} onClick={(e) => { e.stopPropagation(); setHpEditParticipant(p); setHpEditValue(p.currentLife); setHpEditOpen(true); }}>
                                 <EditIcon sx={{ fontSize: isTouch ? 16 : 13, color: "#666" }} />
                               </IconButton>
@@ -1114,12 +1167,17 @@ function CombatScreenContent() {
         </Box>
       </Box>
 
-      <Divider sx={{ borderColor: "#333" }} />
+      {!sideActions && <Divider sx={{ borderColor: "#333" }} />}
 
       {/* ===== ACTION BAR ===== */}
       {/* Celular: até ~40% da tela (rola por dentro se o personagem tiver
           muitas habilidades) — a lista de alvos continua visível acima */}
-      <Box sx={{ p: { xs: 1.5, md: 2 }, flexShrink: 0, minHeight: { md: 125 }, maxHeight: { xs: "40dvh", md: 180 }, overflow: "auto", borderTop: isMyTurn && !pendingReactionRoll ? "2px solid rgba(79,195,247,0.8)" : "2px solid rgba(107,122,219,0.3)", background: isMyTurn && !pendingReactionRoll ? "linear-gradient(90deg, rgba(79,195,247,0.08) 0%, rgba(14,14,26,0.8) 100%)" : "linear-gradient(90deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.8) 100%)", transition: "border-color 0.4s, background 0.4s" }}>
+      <Box sx={{
+        p: { xs: 1.25, md: 2 }, flexShrink: 0, overflow: "auto",
+        ...(sideActions
+          ? { width: "44%", maxWidth: 380, borderLeft: isMyTurn && !pendingReactionRoll ? "2px solid rgba(79,195,247,0.8)" : "2px solid rgba(107,122,219,0.3)" }
+          : { minHeight: { md: 125 }, maxHeight: { xs: "34dvh", md: 180 }, borderTop: isMyTurn && !pendingReactionRoll ? "2px solid rgba(79,195,247,0.8)" : "2px solid rgba(107,122,219,0.3)" }),
+        background: isMyTurn && !pendingReactionRoll ? "linear-gradient(90deg, rgba(79,195,247,0.08) 0%, rgba(14,14,26,0.8) 100%)" : "linear-gradient(90deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.8) 100%)", transition: "border-color 0.4s, background 0.4s" }}>
         <Stack spacing={{ xs: 1.5, md: 2 }}>
           <Box sx={{ pb: 1, borderBottom: "1px solid rgba(107,122,219,0.2)" }}>
             <Typography color={isMyTurn && !pendingReactionRoll ? "#4fc3f7" : "#8B9DFF"} fontSize={{ xs: 13, md: 14 }} fontWeight={500}>
@@ -1185,6 +1243,7 @@ function CombatScreenContent() {
                         }
                       }}
                       sx={{
+                        ...mobileActionBtnSx,
                         transition: "all 0.3s",
                         pr: presetIsAoe ? 4 : undefined,
                         outline: isArmed ? "2px solid rgba(167,139,250,0.7)" : "none",
@@ -1236,7 +1295,7 @@ function CombatScreenContent() {
                       startIcon={<AutorenewIcon />}
                       disabled={disabled}
                       onClick={() => performTransform(preset)}
-                      sx={{ borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
+                      sx={{ ...mobileActionBtnSx, borderColor: "rgba(124,58,237,0.5)", color: "#a78bfa" }}
                     >
                       {formLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
                       {preset.name}
@@ -1261,7 +1320,7 @@ function CombatScreenContent() {
             })}
 
             {isMyTurn && (
-              <Button variant="outlined" disabled={!canEndTurn || isLoading} onClick={endTurn}>
+              <Button variant="outlined" disabled={!canEndTurn || isLoading} onClick={endTurn} sx={mobileActionBtnSx}>
                 {isLoading ? <CircularProgress size={14} sx={{ mr: 0.5 }} /> : null}
                 Passar Turno
               </Button>
@@ -1284,6 +1343,7 @@ function CombatScreenContent() {
             </Typography>
           )}
         </Stack>
+      </Box>
       </Box>
 
       {/* ===== MODAL REAÇÃO ===== */}
@@ -1527,11 +1587,29 @@ function CombatScreenContent() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button variant="contained" onClick={() => { clearStats(); router.push("/protected/"); }}>
+          {/* Mestre volta para a mesa (de onde abriu o combate) */}
+          <Button variant="contained" onClick={() => { clearStats(); router.replace("/protected/"); }}>
             Fechar
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ===== FICHA NO COMBATE ===== */}
+      <CombatSheetDialog
+        open={sheetOpen}
+        onClose={() => { setSheetOpen(false); refreshCombat(); }}
+        isMaster={isMaster}
+        initialCharacterId={sheetCharacterId}
+        entries={
+          isMaster
+            ? ordered.map((p) => ({
+                character: p.character,
+                isActiveTurn: p.turnOrder === combat.currentTurnIndex,
+                isDead: p.currentLife <= 0,
+              }))
+            : myParticipant ? [{ character: myParticipant.character }] : []
+        }
+      />
 
       {/* ===== FULLSCREEN VISÃO GERAL ===== */}
       <AnimatePresence>

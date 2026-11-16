@@ -1,7 +1,7 @@
 import { Card, CardContent, CardActions, Stack, Button, Grid, Typography, Chip, Skeleton } from "@mui/material";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import Link from "next/link";
 import { Combat } from "@prisma/client";
-import { openAppPage } from "../../lib/pwa";
 type Props = {
   combat?: Combat;
   loading?: boolean
@@ -34,7 +34,7 @@ export function CombatCard({ combat, loading = false, }: Props) {
               <Button
                 fullWidth
                 variant="outlined"
-                endIcon={<OpenInNewIcon />}
+                endIcon={<ArrowForwardIcon />}
                 disabled
               >
                 <Skeleton width={"100%"} />
@@ -73,8 +73,12 @@ export function CombatCard({ combat, loading = false, }: Props) {
               <Button
                 fullWidth
                 variant="outlined"
-                endIcon={<OpenInNewIcon />}
-                onClick={() => openAppPage(`/protected/combat?combatId=${combat?.id}`)}
+                endIcon={<ArrowForwardIcon />}
+                // Mesma aba (Link): a ficha agora abre dentro do combate, então
+                // não há mais motivo para manter as duas telas abertas. Ao
+                // encerrar, o combate leva de volta para a ficha.
+                component={Link}
+                href={`/protected/combat?combatId=${combat?.id}`}
               >
                 Abrir combate
               </Button>

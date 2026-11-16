@@ -7,6 +7,7 @@ import Mestre from "./mestre";
 import Jogador from "./jogador";
 import { handleLogout } from "../../lib/api";
 import { useEffect, useState } from "react";
+import DiceLoader from "../../components/DiceLoader";
 
 export default function Mesa() {
   const { user } = useAuth();
@@ -46,10 +47,10 @@ export default function Mesa() {
   }, [user, campaignLoading, activeCampaign, campaigns, router]);
 
   if (!user || campaignLoading) {
-    return <>Carregando...</>;
+    return <DiceLoader message="Carregando a mesa" />;
   }
   if (!activeCampaign) {
-    return <>Redirecionando para seleção de mesa…</>;
+    return <DiceLoader message="Escolhendo a mesa" flavor={[]} />;
   }
 
   const view = searchParams.get("view");

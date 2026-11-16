@@ -52,6 +52,13 @@ type Props = {
   isMasterView?: boolean;
   onClose?: () => void;
   onFormSwitched?: () => void;
+  /**
+   * Ficha incorporada em outra tela (modal do combate): sem o painel de
+   * "Combates Ativos", sem rolador avulso, sem a janela da tela
+   * compartilhada, sem trocar o título da aba e com as rolagens rápidas no
+   * fluxo normal (o position:fixed delas flutuaria por cima do modal)
+   */
+  embedded?: boolean;
 };
 
 export function CharacterSheet({
@@ -59,6 +66,7 @@ export function CharacterSheet({
   isMasterView = false,
   onClose,
   onFormSwitched,
+  embedded = false,
 }: Props) {
   const [item, setItem] = useState<CharacterInventory | undefined>();
   const [preset, setPreset] = useState<ActionPresetType | undefined>();
@@ -149,11 +157,13 @@ export function CharacterSheet({
 
   return (
     <>
-    <Stack gap={2} sx={{ px: { xs: 1, sm: 2 }, ...(quickActions.length > 0 ? { pr: { lg: "336px" } } : {}) }}>
-      <Head>
-        <title>Ficha {character.name}</title>
-      </Head>
-      {!isMasterView && (
+    <Stack gap={2} sx={{ px: embedded ? 0 : { xs: 1, sm: 2 }, ...(quickActions.length > 0 && !embedded ? { pr: { lg: "336px" } } : {}) }}>
+      {!embedded && (
+        <Head>
+          <title>Ficha {character.name}</title>
+        </Head>
+      )}
+      {!isMasterView && !embedded && (
         <Paper
           elevation={0}
           sx={{
@@ -218,7 +228,7 @@ export function CharacterSheet({
           </Stack>
         </Paper>
       )}
-      {!isMasterView && !loading && (
+      {!isMasterView && !loading && !embedded && (
         <Paper
           elevation={0}
           sx={{
@@ -244,11 +254,12 @@ export function CharacterSheet({
         sx={{
           position: "relative",
           p: 0,
-          minWidth: { xs: "100%", sm: 650 },
+          // Incorporada: ocupa o container (o modal) em vez de impor 650px
+          minWidth: embedded ? 0 : { xs: "100%", sm: 650 },
           maxWidth: { xs: "100%", sm: 1000 },
           mx: "auto",
-          width: { xs: "100%", sm: "auto" },
-          marginBottom: 2,
+          width: embedded ? "100%" : { xs: "100%", sm: "auto" },
+          marginBottom: embedded ? 0 : 2,
           borderRadius: { xs: 2, sm: 4 },
           overflow: "hidden",
           color: "#fff",
@@ -487,13 +498,17 @@ export function CharacterSheet({
             {!loading && quickActions.length > 0 && (
               <Box
                 sx={{
-                  position: { xs: "static", lg: "fixed" },
-                  width: { xs: "100%", lg: 280 },
-                  top: { lg: 88 },
-                  right: { lg: 24 },
-                  maxHeight: { lg: "calc(100vh - 112px)" },
-                  overflowY: { lg: "auto" },
-                  zIndex: { lg: 10 },
+                  ...(embedded
+                    ? { width: "100%" }
+                    : {
+                        position: { xs: "static", lg: "fixed" },
+                        width: { xs: "100%", lg: 280 },
+                        top: { lg: 88 },
+                        right: { lg: 24 },
+                        maxHeight: { lg: "calc(100vh - 112px)" },
+                        overflowY: { lg: "auto" },
+                        zIndex: { lg: 10 },
+                      }),
                 }}
               >
                 <Section title="Rolagens rápidas">
@@ -615,7 +630,7 @@ export function CharacterSheet({
       </Box>
     </Stack>
 
-    <ScreenSharePiP />
+    {!embedded && <ScreenSharePiP />}
     </>
   );
 }

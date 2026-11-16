@@ -9,6 +9,7 @@ import { createCharacterTemplate } from "../../lib/characterTemplate";
 import { DiceInputRoller } from "../DiceInputRoller";
 import Link from "next/link";
 import { FULL_HEIGHT } from "../../lib/layout";
+import DiceLoader from "../DiceLoader";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 type Props = {
@@ -64,7 +65,7 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
     getCharacters();
   }, [forcedCharacterId]);
 
-  if (loadingCharacter) return <>Carregando...</>
+  if (loadingCharacter) return <DiceLoader message="Abrindo a ficha" flavor={["Conferindo atributos", "Arrumando o inventário", "Revisando as habilidades"]} />
   if (!character) {
     return <Stack display={"flex"} height={FULL_HEIGHT} justifyContent={"center"} flexDirection={"row"} gap={2} alignItems={"center"} px={2}>
       {forcedCharacterId ? (

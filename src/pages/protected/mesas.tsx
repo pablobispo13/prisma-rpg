@@ -28,6 +28,7 @@ import { DEFAULT_DEFENSE_FORMULA, DEFAULT_MAX_LIFE_FORMULA } from "../../lib/cha
 import { FORMULA_VARIABLES } from "../../lib/formula";
 import { CustomAttributeType, SkillType, Character_Attributes } from "../../types/types";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DiceLoader from "../../components/DiceLoader";
 
 const EXPIRATION_OPTIONS = [
   { label: "Não expira", value: 0 },
@@ -365,7 +366,7 @@ export default function MesasPage() {
         </Stack>
       </Stack>
 
-      {loading && <Typography>Carregando…</Typography>}
+      {loading && <DiceLoader variant="inline" message="Buscando suas mesas" />}
       {!loading && campaigns.length === 0 && (
         <Card sx={{ background: "#16162a", border: "1px solid rgba(107,122,219,0.20)" }}>
           <CardContent>

@@ -31,6 +31,25 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.3.0",
+    date: "2026-11-16",
+    title: "Ficha dentro do combate e celular deitado",
+    summary:
+      "Agora dá para abrir a ficha sem sair do combate, e o app ficou utilizável com o celular deitado.",
+    items: [
+      { type: "new", text: "Botão “Minha ficha” no combate: abre a ficha completa do seu personagem sem sair da tela de combate.", audience: "player" },
+      { type: "new", text: "Botão “Fichas” no combate: abre a ficha de qualquer participante, com atalhos no topo para alternar entre eles. Também dá para abrir pelo ícone de ficha em cada card da ordem de turno.", audience: "master" },
+      { type: "improved", text: "Nova tela de carregamento: um d20 rolando no lugar do texto “Carregando…” ao abrir o combate, a mesa, a ficha e a lista de mesas." },
+      { type: "improved", text: "“Abrir combate” agora leva para o combate na mesma aba, sem abrir uma nova. Quando o combate termina, você volta automaticamente para a ficha do seu personagem (o mestre volta para a mesa)." },
+      { type: "improved", text: "Combate com o celular deitado: as habilidades ficam numa coluna à direita e a lista de participantes continua visível." },
+      { type: "improved", text: "No celular em pé, os botões de habilidade ficaram mais compactos, sobrando mais espaço para a lista de participantes." },
+      { type: "fixed", text: "A contagem de novidades na aba Log aparecia mesmo sem nenhuma ação nova." },
+      { type: "fixed", text: "Em celulares com tema claro, vários textos ficavam pretos sobre o fundo escuro (nomes, títulos da ficha)." },
+      { type: "fixed", text: "No app instalado no iPhone, a barra superior ficava parcialmente coberta pela barra de status." },
+      { type: "fixed", text: "Editores de habilidade e de dados do personagem não abriam em tela cheia no celular." },
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-11-16",
     title: "App instalável e telas ajustadas para celular",

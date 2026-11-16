@@ -25,6 +25,23 @@ type DisplayItem =
   | { kind: "group"; key: string; logs: ActionLog[] }
   | { kind: "inline"; log: ActionLog };
 
+/**
+ * Quantas entradas a timeline exibe para estes logs — mesma regra do
+ * agrupamento abaixo (ignora SKIP_TYPES; vários logs da mesma rolagem
+ * contam como 1). Usado pelo badge "Log" do combate no celular, que antes
+ * contava logs brutos e acendia com eventos invisíveis (início de turno etc.)
+ */
+export function countTimelineEntries(logs: ActionLog[] | undefined | null): number {
+  const keys = new Set<string>();
+  for (const log of logs ?? []) {
+    if (SKIP_TYPES.has(log.type)) continue;
+    if (log.roll?.id) keys.add(log.roll.id);
+    // Log solto só aparece se tiver estilo inline (senão o render devolve null)
+    else if (INLINE_STYLE[log.type]) keys.add(log.id);
+  }
+  return keys.size;
+}
+
 export function CombatTimelineV2({ logs }: CombatTimelineV2Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
