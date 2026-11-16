@@ -15,11 +15,16 @@ export function registerServiceWorker() {
   });
 }
 
+// O manifest pede "fullscreen" (Android: esconde barra de status e botões
+// do sistema) com "standalone" de reserva (iOS e navegadores sem suporte) —
+// os dois contam como "app instalado"
+const INSTALLED_QUERY = "(display-mode: fullscreen), (display-mode: standalone)";
+
 /** true quando o app roda instalado (janela própria, sem barra do navegador). */
 export function isStandalone() {
   if (typeof window === "undefined") return false;
   return (
-    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia(INSTALLED_QUERY).matches ||
     // Safari iOS antigo não suporta display-mode
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
@@ -55,7 +60,7 @@ export function usePwaInstall() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    setInstalled(isStandalone());
 
     const onPrompt = (e: Event) => {
       e.preventDefault();

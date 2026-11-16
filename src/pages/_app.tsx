@@ -21,9 +21,13 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         <ThemeContextProvider>
             <>
             <Head>
-                {/* viewport-fit=cover: no PWA instalado o app ocupa a área do
-                    notch; o Layout compensa com env(safe-area-inset-*) */}
-                <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+                {/* SEM viewport-fit=cover de propósito: com ele o PWA era
+                    desenhado por trás da barra de status (Android 15+
+                    edge-to-edge) e nem sempre o env(safe-area-inset-top) vinha
+                    preenchido — a barra de status "comia" a navbar. Sem cover,
+                    o próprio sistema mantém o app dentro da área segura; os
+                    env(safe-area-inset-*) do Layout passam a valer 0 (inofensivos). */}
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
             </Head>
             <AuthProvider>

@@ -7,7 +7,7 @@
 //
 // Ao mudar a estratégia de cache, incremente VERSION — o activate apaga os
 // caches das versões anteriores.
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `prisma-static-${VERSION}`;
 const PAGES_CACHE = `prisma-pages-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
