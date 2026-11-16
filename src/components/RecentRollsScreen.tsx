@@ -100,10 +100,12 @@ export default function RecentRollsScreen() {
     return (
         <Box
             sx={{
-                minHeight: "100vh",
+                // Fica dentro da coluna lateral da MesaMestre: 100vh aqui
+                // criava um bloco vazio da altura da tela no celular
+                minHeight: { lg: "100%" },
                 backgroundColor: "#0e0e1a",
                 color: "#fff",
-                p: 3,
+                p: { xs: 0.5, sm: 1.5, lg: 3 },
             }}
         >
             <Stack spacing={2} sx={{ maxWidth: 800, mx: "auto" }}>
@@ -111,14 +113,14 @@ export default function RecentRollsScreen() {
                     Rolagens Recentes
                 </Typography>
 
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
                     <TextField
                         select
                         label="Filtrar por Combate"
                         value={combatFilter}
                         onChange={(e) => setCombatFilter(e.target.value)}
                         size="small"
-                        sx={{ minWidth: 240 }}
+                        sx={{ minWidth: { xs: 0, sm: 240 }, flex: { xs: 1, sm: "none" } }}
                     >
                         <MenuItem value="all">Todos os combates</MenuItem>
                         <MenuItem value="none">Sem combate (livres)</MenuItem>

@@ -452,9 +452,10 @@ function CombatCard({
                         alignItems="center"
                         justifyContent="space-between"
                         onClick={() => setIsOpen((v) => !v)}
+                        gap={1}
                         sx={{ cursor: "pointer" }}
                     >
-                        <Stack spacing={0.5}>
+                        <Stack spacing={0.5} flex={1} minWidth={0}>
                             <Typography fontWeight={700} fontSize={13}>
                                 {new Date(combat.createdAt).toLocaleString("pt-BR", {
                                     day: "2-digit", month: "2-digit", year: "numeric",

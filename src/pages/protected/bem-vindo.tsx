@@ -17,6 +17,7 @@ import Head from "next/head";
 import DiceLogo from "../../components/DiceLogo";
 import { useAuth } from "../../context/AuthContext";
 import { useCampaign } from "../../context/CampaignContext";
+import { FULL_HEIGHT } from "../../lib/layout";
 
 const FEATURES = [
   {
@@ -92,7 +93,7 @@ export default function BemVindoPage() {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", background: "radial-gradient(ellipse at 50% -10%, rgba(107,122,219,0.18) 0%, #0e0e1a 55%)", color: "#cdd1e0", p: { xs: 2, md: 4 } }}>
+    <Box sx={{ minHeight: FULL_HEIGHT, background: "radial-gradient(ellipse at 50% -10%, rgba(107,122,219,0.18) 0%, #0e0e1a 55%)", color: "#cdd1e0", p: { xs: 2, md: 4 } }}>
       <Head><title>Bem-vindo — Prisma RPG</title></Head>
 
       <Box sx={{ maxWidth: 1000, mx: "auto" }}>

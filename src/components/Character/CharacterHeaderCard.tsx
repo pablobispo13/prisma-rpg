@@ -157,7 +157,9 @@ export function CharacterHeaderCard({
 
             {/* Ações do cabeçalho */}
             {!loading && (
-              <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+              // Pode encolher e quebrar linha — 4 botões com texto não cabem
+              // ao lado do avatar em telas de 600–900px
+              <Stack direction="row" gap={0.5} flexWrap="wrap" useFlexGap justifyContent={{ sm: "flex-end" }} sx={{ flexShrink: 1, minWidth: 0, maxWidth: "100%" }}>
                 {onHistoryAction && (
                   <Button
                     size="small"

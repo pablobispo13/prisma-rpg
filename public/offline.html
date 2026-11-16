@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e0e1a" />
+  <title>Sem conexão — Prisma RPG</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: radial-gradient(ellipse at 50% -10%, rgba(107,122,219,0.18) 0%, #0e0e1a 55%);
+      color: #cdd1e0;
+      font-family: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+      text-align: center;
+    }
+    main { max-width: 360px; }
+    img { width: 72px; height: 72px; margin-bottom: 16px; }
+    h1 { font-size: 20px; color: #8B9DFF; margin: 0 0 8px; letter-spacing: 0.5px; }
+    p { font-size: 14px; color: #7a7f95; line-height: 1.5; margin: 0 0 24px; }
+    button {
+      font: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: #6B7ADB;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 24px;
+      min-height: 44px;
+      cursor: pointer;
+    }
+    button:hover { background: #7d8be6; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/favicon.svg" alt="" />
+    <h1>Sem conexão</h1>
+    <p>O combate e as fichas são sincronizados em tempo real, então o app precisa de internet. Assim que a conexão voltar, é só tentar de novo.</p>
+    <button type="button" onclick="location.reload()">Tentar novamente</button>
+  </main>
+  <script>
+    // Volta sozinho quando a rede retornar
+    window.addEventListener("online", () => location.reload());
+  </script>
+</body>
+</html>

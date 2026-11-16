@@ -37,10 +37,10 @@ export function ScreenSharePiP() {
     <Box
       sx={{
         position: "fixed",
-        bottom: 24,
-        right: 24,
+        bottom: { xs: "calc(12px + env(safe-area-inset-bottom))", sm: 24 },
+        right: { xs: 12, sm: 24 },
         zIndex: 1200,
-        width: collapsed ? 160 : 320,
+        width: collapsed ? 160 : { xs: "min(320px, calc(100vw - 24px))", sm: 320 },
         borderRadius: 2,
         overflow: "hidden",
         border: "1px solid rgba(107,122,219,0.4)",

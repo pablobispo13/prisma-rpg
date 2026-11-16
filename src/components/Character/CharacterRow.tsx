@@ -174,7 +174,11 @@ export function CharacterRow({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 1.5,
+          // Celular: nome + avatar numa linha, botões de ação na de baixo
+          // (eram ~5 ícones + 2 chips na mesma linha, sobrava ~40px pro nome)
+          flexWrap: { xs: "wrap", sm: "nowrap" },
+          columnGap: 1.5,
+          rowGap: 0.5,
           py: 0.875,
           px: 1.5,
           borderRadius: 1,
@@ -197,13 +201,15 @@ export function CharacterRow({
           },
         }}
       >
-        {/* Drag handle */}
+        {/* Drag handle — arrastar nativo do HTML5 não existe em tela de
+            toque, então a alça só aparece com mouse */}
         {onDragStart && (
           <Box
             sx={{
               color: "#2a2a3a",
               flexShrink: 0,
               display: "flex",
+              "@media (pointer: coarse)": { display: "none" },
               alignItems: "center",
               cursor: "grab",
               ml: -0.5,
@@ -286,7 +292,7 @@ export function CharacterRow({
         </Box>
 
         {/* Badges */}
-        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0, display: { xs: "none", sm: "flex" } }}>
           <Chip
             label={`DEF ${character.baseDefense}`}
             size="small"
@@ -315,7 +321,11 @@ export function CharacterRow({
         </Stack>
 
         {/* Action buttons */}
-        <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
+        <Stack
+          direction="row"
+          spacing={{ xs: 0.75, sm: 0.25 }}
+          sx={{ flexShrink: 0, width: { xs: "100%", sm: "auto" }, justifyContent: { xs: "flex-end", sm: "flex-start" } }}
+        >
           {onHide && (
             <Tooltip title={isHidden ? "Mostrar" : "Ocultar"}>
               <IconButton

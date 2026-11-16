@@ -45,6 +45,8 @@ import { CharacterRow } from "../Character/CharacterRow";
 import RecentRollsScreen from "../RecentRollsScreen";
 import { CombatHistory } from "../Combat/CombatHistory";
 import Head from "next/head";
+import { FULL_HEIGHT } from "../../lib/layout";
+import { openAppPage } from "../../lib/pwa";
 
 /* =========================
    NEW ENEMY DIALOG
@@ -323,17 +325,22 @@ export default function MesaMestre() {
   }
 
   function openSheet(char: Character) {
-    window.open(`/protected?view=jogador&characterId=${char.id}`, "_blank", "noopener,noreferrer");
+    openAppPage(`/protected?view=jogador&characterId=${char.id}`);
   }
 
   return (
     <Box
       sx={{
-        display: "grid",
-        gridTemplateColumns: "1fr 380px",
+        // Desktop largo: 2 colunas com rolagem independente, ocupando a tela.
+        // Abaixo de lg: uma coluna só e a página rola normalmente (antes era
+        // 100vh fixo + lateral de 380px — cortava o fim e espremia o celular)
+        display: { xs: "flex", lg: "grid" },
+        flexDirection: "column",
+        gridTemplateColumns: { lg: "1fr 380px" },
         gap: 2,
-        height: "100vh",
-        overflow: "hidden",
+        height: { lg: FULL_HEIGHT },
+        overflow: { lg: "hidden" },
+        p: { xs: 1.5, sm: 2, lg: 0 },
         background: "#0e0e1a",
       }}
     >
@@ -342,7 +349,7 @@ export default function MesaMestre() {
       </Head>
 
       {/* ─── COLUNA PRINCIPAL ─── */}
-      <Box sx={{ overflow: "auto", pr: 1 }}>
+      <Box sx={{ overflow: { lg: "auto" }, pr: { lg: 1 }, minWidth: 0 }}>
         <Stack gap={2}>
 
           {/* COMPARTILHAMENTO DE TELA */}
@@ -352,9 +359,9 @@ export default function MesaMestre() {
             border: `1px solid ${screenSharing ? "rgba(107,219,122,0.4)" : "rgba(107,122,219,0.2)"}`,
             transition: "border-color 0.3s",
           }}>
-            <Stack direction="row" alignItems="center" gap={1.5}>
+            <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap">
               <LiveTvIcon sx={{ color: screenSharing ? "#4ade80" : "#6B7ADB", flexShrink: 0 }} />
-              <Typography fontWeight={600} sx={{ color: screenSharing ? "#4ade80" : "#8B9DFF", flex: 1 }}>
+              <Typography fontWeight={600} sx={{ color: screenSharing ? "#4ade80" : "#8B9DFF", flex: 1, minWidth: 160 }}>
                 {screenSharing
                   ? `Compartilhando tela (${screenShareViewerCount} assistindo)`
                   : "Compartilhamento de tela"}
@@ -367,7 +374,7 @@ export default function MesaMestre() {
                 color={screenSharing ? "error" : "primary"}
                 size="small"
                 onClick={screenSharing ? stopScreenShare : startScreenShare}
-                sx={{ minWidth: 140, flexShrink: 0 }}
+                sx={{ minWidth: 140, flexShrink: 0, width: { xs: "100%", sm: "auto" } }}
               >
                 {screenSharing ? "Parar compartilhamento" : "Compartilhar tela"}
               </Button>
@@ -376,12 +383,12 @@ export default function MesaMestre() {
 
           {/* COMBATES ATIVOS */}
           <Paper elevation={6} sx={{
-            p: 3,
+            p: { xs: 2, sm: 3 },
             background: "linear-gradient(135deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.9) 100%)",
             border: "1px solid rgba(107,122,219,0.2)",
           }}>
             <Stack gap={3}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
                 <Typography variant="h5" fontWeight="bold" sx={{ fontSize: "1.3rem", letterSpacing: 0.5 }}>
                   ⚔️ Combates Ativos
                 </Typography>
@@ -414,7 +421,7 @@ export default function MesaMestre() {
                         <CardActions>
                           <Button
                             fullWidth variant="outlined" endIcon={<OpenInNewIcon />}
-                            onClick={() => window.open(`/protected/combat?combatId=${c.id}`, "_blank", "noopener,noreferrer")}
+                            onClick={() => openAppPage(`/protected/combat?combatId=${c.id}`)}
                           >
                             Abrir combate
                           </Button>
@@ -429,7 +436,7 @@ export default function MesaMestre() {
 
           {/* HISTÓRICO */}
           <Paper elevation={6} sx={{
-            p: 3,
+            p: { xs: 2, sm: 3 },
             background: "linear-gradient(135deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.9) 100%)",
             border: "1px solid rgba(107,122,219,0.2)",
           }}>
@@ -446,7 +453,7 @@ export default function MesaMestre() {
 
           {/* ─── PERSONAGENS ─── */}
           <Paper elevation={6} sx={{
-            p: 3,
+            p: { xs: 2, sm: 3 },
             background: "linear-gradient(135deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.9) 100%)",
             border: "1px solid rgba(107,122,219,0.2)",
           }}>
@@ -638,10 +645,13 @@ export default function MesaMestre() {
 
       {/* ─── COLUNA LATERAL ─── */}
       <Box sx={{
-        borderLeft: "1px solid rgba(107,122,219,0.2)",
+        borderLeft: { lg: "1px solid rgba(107,122,219,0.2)" },
+        border: { xs: "1px solid rgba(107,122,219,0.2)", lg: "none" },
+        borderRadius: { xs: 1, lg: 0 },
         backgroundColor: "rgba(14,14,26,0.8)",
         p: 2,
-        overflow: "auto",
+        overflow: { lg: "auto" },
+        minWidth: 0,
         background: "linear-gradient(135deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.9) 100%)",
       }}>
         <RecentRollsScreen />

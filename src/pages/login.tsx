@@ -73,7 +73,7 @@ export default function LoginPage() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -113,7 +113,7 @@ export default function LoginPage() {
         sx={{
           width: "100%",
           maxWidth: 420,
-          p: 4,
+          p: { xs: 3, sm: 4 },
           background:
             "linear-gradient(145deg, rgba(28,28,50,0.9) 0%, rgba(14,14,26,0.97) 100%)",
           border: "1px solid rgba(107,122,219,0.25)",

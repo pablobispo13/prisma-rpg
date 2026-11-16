@@ -340,10 +340,10 @@ export default function MesasPage() {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900, mx: "auto", color: "#cdd1e0" }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: "auto", color: "#cdd1e0" }}>
+      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} gap={1.5} mb={2}>
         <Typography variant="h5" sx={{ color: "#8B9DFF" }}>Minhas Mesas</Typography>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <FormControlLabel
             control={
               <Switch
@@ -712,7 +712,7 @@ export default function MesasPage() {
                   ))}
                 </List>
               )}
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "flex-start" }}>
                 <TextField
                   size="small"
                   label="Nome do novo atributo"
@@ -727,7 +727,7 @@ export default function MesasPage() {
                   type="number"
                   value={newAttrDefault}
                   onChange={(e) => setNewAttrDefault(e.target.value)}
-                  sx={{ maxWidth: 140 }}
+                  sx={{ maxWidth: { sm: 140 } }}
                 />
                 <Button
                   type="button"
@@ -768,7 +768,7 @@ export default function MesasPage() {
                   ))}
                 </List>
               )}
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "flex-start" }}>
                 <TextField
                   size="small"
                   label="Nome da nova perícia"
@@ -837,7 +837,7 @@ export default function MesasPage() {
               <Typography variant="caption" sx={{ color: "#7a7f95" }}>
                 Habilidades com limite de usos por dia (configurado na ficha) liberam de novo quando você avança o dia. Dia atual: <strong>{editTarget?.worldDay ?? 1}</strong>.
               </Typography>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
                 <Button
                   type="button"
                   size="small"
@@ -879,7 +879,7 @@ export default function MesasPage() {
                 type="number"
                 value={editAbilitySanityCost}
                 onChange={(e) => setEditAbilitySanityCost(e.target.value)}
-                sx={{ maxWidth: 260 }}
+                sx={{ maxWidth: { sm: 260 } }}
                 inputProps={{ min: 0 }}
                 helperText="Vazio = nenhum custo automático"
               />

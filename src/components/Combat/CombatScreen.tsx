@@ -23,8 +23,23 @@ import {
   TextField,
   Tooltip,
   Avatar,
+  Tabs,
+  Tab,
+  Badge,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  Popover,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CasinoIcon from "@mui/icons-material/Casino";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
 import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
@@ -45,7 +60,8 @@ import { useScreenShareContext } from "../../context/ScreenShareContext";
 import { characterImageSrc } from "../../lib/characterImage";
 import { useCampaign } from "../../context/CampaignContext";
 import { isNpc as checkIsNpc } from "../../lib/isNpc";
-import { Reorder, motion, AnimatePresence } from "framer-motion";
+import { Reorder, motion, AnimatePresence, useDragControls } from "framer-motion";
+import { FULL_HEIGHT } from "../../lib/layout";
 
 /* =========================
    HELPERS
@@ -298,6 +314,54 @@ function Row({ label, value, highlight, danger }: { label: string; value: string
   );
 }
 
+/**
+ * Item reordenável da ordem de turno. No mouse o card inteiro é arrastável
+ * (comportamento antigo); em tela de toque o arraste só começa pela alça —
+ * senão o framer-motion captura o gesto e a lista não rola com o dedo.
+ * `children` recebe a alça (null quando não se aplica) para posicioná-la.
+ */
+function TurnOrderItem({
+  value, isMaster, handleOnly, onDragEnd, isActive, children,
+}: {
+  value: unknown;
+  isMaster: boolean;
+  handleOnly: boolean;
+  onDragEnd: () => void;
+  isActive: boolean;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const controls = useDragControls();
+  const handle = isMaster && handleOnly ? (
+    <Box
+      aria-label="Arrastar para reordenar"
+      onPointerDown={(e) => controls.start(e)}
+      onClick={(e) => e.stopPropagation()}
+      sx={{ touchAction: "none", display: "flex", alignItems: "center", color: "#666", cursor: "grab", p: 0.75, m: -0.75 }}
+    >
+      <DragIndicatorIcon sx={{ fontSize: 20 }} />
+    </Box>
+  ) : null;
+
+  return (
+    <Reorder.Item
+      value={value}
+      as="div"
+      dragListener={isMaster && !handleOnly}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      animate={isActive ? {
+        boxShadow: ["0 0 18px rgba(79,195,247,0.5)", "0 0 32px rgba(79,195,247,0.95)", "0 0 18px rgba(79,195,247,0.5)"],
+      } : { boxShadow: "0 2px 8px rgba(0,0,0,0.5)" }}
+      transition={isActive
+        ? { duration: 2, repeat: Infinity, ease: "easeInOut", layout: { duration: 0 } }
+        : { layout: { duration: 0 } }}
+      style={{ borderRadius: 8, cursor: isMaster && !handleOnly ? "grab" : "default", position: "relative" }}
+    >
+      {children(handle)}
+    </Reorder.Item>
+  );
+}
+
 /* =========================
    ROOT
 ========================= */
@@ -374,6 +438,24 @@ function CombatScreenContent() {
   // Transformação (troca de forma) em combate — cada forma disponível é um
   // ActionPreset type=TRANSFORM (auto-gerado em POST .../forms)
   const [formLoading, setFormLoading] = useState(false);
+
+  // Responsivo: abaixo de md (celular, tablet em pé) as 3 colunas viram abas
+  // e a barra de ações fica fixa embaixo. isTouch é independente da largura
+  // (tablet deitado é largo mas continua sendo toque).
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isTouch = useMediaQuery("(pointer: coarse)");
+  const [mobileTab, setMobileTab] = useState<"order" | "field" | "log">("order");
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
+  const [diceAnchor, setDiceAnchor] = useState<HTMLElement | null>(null);
+
+  // Logs chegados enquanto a aba Log não estava aberta (badge na aba)
+  const logCount = combat?.logs?.length ?? 0;
+  const [seenLogCount, setSeenLogCount] = useState(logCount);
+  useEffect(() => {
+    if (!isMobile || mobileTab === "log") setSeenLogCount(logCount);
+  }, [isMobile, mobileTab, logCount]);
+  const unseenLogs = Math.max(0, logCount - seenLogCount);
 
   useEffect(() => {
     if (actionUsed || !isMyTurn) setSelectedPresetId(null);
@@ -474,6 +556,8 @@ function CombatScreenContent() {
     if (!combat) return;
     if (isMyTurn && !pendingReactionRoll) {
       document.title = "⚔️ SEU TURNO! — Combate";
+      // Celular: vibra (Android; iOS ignora silenciosamente)
+      if (typeof navigator !== "undefined") navigator.vibrate?.([120, 80, 120]);
       if (typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
           new Notification("É o seu turno!", { body: "Clique para agir no combate." });
@@ -668,18 +752,74 @@ function CombatScreenContent() {
   );
 
   return (
-    <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "80px 1fr 0px", backgroundColor: "#0e0e1a", color: "#fff", overflow: "hidden" }}>
+    // Altura = tela - AppBar (antes era 100vh e a barra de ações ficava
+    // cortada pelos 50px da AppBar, escondida pelo overflow do <main>)
+    <Box sx={{ height: FULL_HEIGHT, display: "flex", flexDirection: "column", backgroundColor: "#0e0e1a", color: "#fff", overflow: "hidden" }}>
       <Head><title>Tela de combate</title></Head>
 
       {/* ===== HEADER ===== */}
-      <Box sx={{ borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", px: 3 }}>
-        <Stack direction="row" spacing={3} alignItems="center">
-          <Typography variant="h6">Round {combat.round}</Typography>
-          <Button size="small" variant="outlined" onClick={refreshCombat}>Atualizar agora</Button>
-          {!isMaster && <DiceInputRoller characterId={myCharacterIds[0]} />}
+      <Box sx={{ borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: { xs: 1.5, md: 3 }, height: { xs: 52, md: 80 }, flexShrink: 0 }}>
+        <Stack direction="row" spacing={{ xs: 1, md: 3 }} alignItems="center" minWidth={0}>
+          <Typography variant="h6" noWrap sx={{ fontSize: { xs: "1.05rem", md: "1.25rem" } }}>Round {combat.round}</Typography>
+          {isMobile ? (
+            <Tooltip title="Atualizar agora">
+              <IconButton size="small" onClick={refreshCombat} sx={{ color: "#8B9DFF" }}>
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Button size="small" variant="outlined" onClick={refreshCombat}>Atualizar agora</Button>
+          )}
+          {!isMaster && !isMobile && <DiceInputRoller characterId={myCharacterIds[0]} />}
         </Stack>
 
-        <Stack direction="row" spacing={1} alignItems="center">
+        {/* Celular: rolador livre num popover e ações do mestre num menu "⋮" */}
+        {isMobile && (
+          <Stack direction="row" spacing={0.5} alignItems="center" flexShrink={0}>
+            {!isMaster && (
+              <IconButton aria-label="Rolar dados" onClick={(e) => setDiceAnchor(e.currentTarget)} sx={{ color: "#8B9DFF" }}>
+                <CasinoIcon />
+              </IconButton>
+            )}
+            {isMaster && (
+              <IconButton aria-label="Ações do mestre" onClick={(e) => setHeaderMenuAnchor(e.currentTarget)} sx={{ color: "#aaa" }}>
+                <MoreVertIcon />
+              </IconButton>
+            )}
+            <Popover
+              open={!!diceAnchor}
+              anchorEl={diceAnchor}
+              onClose={() => setDiceAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+              slotProps={{ paper: { sx: { p: 1.5, background: "#16162a", border: "1px solid rgba(107,122,219,0.3)" } } }}
+            >
+              <DiceInputRoller characterId={myCharacterIds[0]} />
+            </Popover>
+            <Menu
+              open={!!headerMenuAnchor}
+              anchorEl={headerMenuAnchor}
+              onClose={() => setHeaderMenuAnchor(null)}
+              slotProps={{ paper: { sx: { background: "#16162a", border: "1px solid rgba(107,122,219,0.3)" } } }}
+            >
+              <MenuItem onClick={() => { setHeaderMenuAnchor(null); openAddParticipant(); }}>
+                <ListItemIcon><PersonAddIcon fontSize="small" /></ListItemIcon>
+                Adicionar personagem
+              </MenuItem>
+              <MenuItem onClick={() => { setHeaderMenuAnchor(null); exportLog(); }}>
+                <ListItemIcon><FileDownloadIcon fontSize="small" /></ListItemIcon>
+                Exportar log
+              </MenuItem>
+              <Divider />
+              <MenuItem disabled={isLoading} onClick={() => { setHeaderMenuAnchor(null); endCombat(); }} sx={{ color: "#f87171" }}>
+                <ListItemIcon><StopCircleIcon fontSize="small" sx={{ color: "#f87171" }} /></ListItemIcon>
+                Encerrar combate
+              </MenuItem>
+            </Menu>
+          </Stack>
+        )}
+
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ display: isMobile ? "none" : "flex" }}>
           {isMaster && (
             <Tooltip title="Exportar log">
               <IconButton size="small" onClick={exportLog} sx={{ color: "#aaa" }}>
@@ -701,14 +841,49 @@ function CombatScreenContent() {
         </Stack>
       </Box>
 
+      {/* ===== ABAS (só celular) ===== */}
+      {isMobile && (
+        <Tabs
+          value={mobileTab}
+          onChange={(_, v) => setMobileTab(v)}
+          variant="fullWidth"
+          sx={{
+            minHeight: 42, flexShrink: 0, borderBottom: "1px solid #333",
+            "& .MuiTab-root": { minHeight: 42, py: 0.5, fontSize: 13, textTransform: "none", color: "#888" },
+            "& .Mui-selected": { color: "#8B9DFF !important" },
+          }}
+        >
+          <Tab value="order" label={canAct && selectedPresetId ? "🎯 Alvos" : "Turnos"} />
+          <Tab value="field" label={<Badge variant="dot" color="success" invisible={!screenShareActive}>Campo</Badge>} />
+          <Tab value="log" label={<Badge badgeContent={unseenLogs} color="secondary" max={9} sx={{ "& .MuiBadge-badge": { right: -10 } }}>Log</Badge>} />
+        </Tabs>
+      )}
+
       {/* ===== CENTRO ===== */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "280px 1fr 400px", overflow: "hidden" }}>
+      {/* Desktop: 3 colunas lado a lado. Celular: uma aba visível por vez —
+          as outras ficam montadas com display:none (o <video> da tela
+          compartilhada e as animações de dano não reiniciam ao trocar) */}
+      <Box sx={{
+        flex: 1, minHeight: 0, overflow: "hidden",
+        display: isMobile ? "flex" : "grid",
+        flexDirection: "column",
+        gridTemplateColumns: { md: "240px 1fr 320px", lg: "280px 1fr 400px" },
+      }}>
 
         {/* ORDEM DE TURNO */}
-        <Box sx={{ p: 2, borderRight: "1px solid rgba(51,51,51,0.6)", overflow: "auto", background: "linear-gradient(135deg, rgba(28,28,46,0.4) 0%, rgba(14,14,26,0.8) 100%)" }}>
-          <Typography variant="h6" mb={2} sx={{ fontWeight: "bold", fontSize: "1.1rem", letterSpacing: 0.5 }}>
+        <Box sx={{
+          display: isMobile && mobileTab !== "order" ? "none" : "block",
+          flex: 1, minHeight: 0,
+          p: { xs: 1.5, md: 2 }, borderRight: { md: "1px solid rgba(51,51,51,0.6)" }, overflow: "auto",
+          background: "linear-gradient(135deg, rgba(28,28,46,0.4) 0%, rgba(14,14,26,0.8) 100%)",
+        }}>
+          <Typography variant="h6" mb={{ xs: 1.5, md: 2 }} sx={{ fontWeight: "bold", fontSize: "1.1rem", letterSpacing: 0.5 }}>
             Ordem de Turno
-            {isMaster && <Typography component="span" fontSize={10} color="#666" ml={1}>(arraste para reordenar)</Typography>}
+            {isMaster && (
+              <Typography component="span" fontSize={10} color="#666" ml={1}>
+                {isTouch ? "(segure ⋮⋮ e arraste para reordenar)" : "(arraste para reordenar)"}
+              </Typography>
+            )}
           </Typography>
 
           <Reorder.Group axis="y" values={orderedParticipants} onReorder={(v) => { if (isMaster) { draggedRef.current = true; setOrderedParticipants(v); } }} style={{ padding: 0, margin: 0, listStyle: "none" }} as="div">
@@ -725,20 +900,15 @@ function CombatScreenContent() {
                 const healFx = !hitFx && floating.length > 0;
 
                 return (
-                  <Reorder.Item
+                  <TurnOrderItem
                     key={p.id}
                     value={p}
-                    as="div"
-                    dragListener={isMaster}
+                    isMaster={isMaster}
+                    handleOnly={isTouch}
                     onDragEnd={handleReorderEnd}
-                    animate={isActive ? {
-                      boxShadow: ["0 0 18px rgba(79,195,247,0.5)", "0 0 32px rgba(79,195,247,0.95)", "0 0 18px rgba(79,195,247,0.5)"],
-                    } : { boxShadow: "0 2px 8px rgba(0,0,0,0.5)" }}
-                    transition={isActive
-                      ? { duration: 2, repeat: Infinity, ease: "easeInOut", layout: { duration: 0 } }
-                      : { layout: { duration: 0 } }}
-                    style={{ borderRadius: 8, cursor: isMaster ? "grab" : "default", position: "relative" }}
+                    isActive={isActive}
                   >
+                    {(dragHandle) => (<>
                     {/* Floating damage/heal numbers */}
                     <AnimatePresence>
                       {floating.map((ev) => (
@@ -778,7 +948,7 @@ function CombatScreenContent() {
                         selectTarget(p.character.id, isAoe);
                       }}
                       sx={{
-                        cursor: canAct && selectedPresetId && (p.character.id !== activeCharacter.id || isHealPreset) ? "pointer" : isMaster ? "grab" : "default",
+                        cursor: canAct && selectedPresetId && (p.character.id !== activeCharacter.id || isHealPreset) ? "pointer" : isMaster && !isTouch ? "grab" : "default",
                         backgroundColor: hitFx ? "rgba(239,68,68,0.16)"
                           : isTarget
                           ? (isHealPreset ? "rgba(74,222,128,0.15)" : "rgba(239,83,80,0.15)")
@@ -802,6 +972,7 @@ function CombatScreenContent() {
                       <CardContent sx={{ pb: "12px !important", px: 1.5 }}>
                         {/* Header row: index + avatar + name + badges */}
                         <Stack direction="row" alignItems="center" spacing={1} mb={0.75}>
+                          {dragHandle}
                           <Typography fontSize={10} color="#555" fontWeight={700} sx={{ minWidth: 14 }}>#{index + 1}</Typography>
 
                           <Avatar
@@ -820,8 +991,8 @@ function CombatScreenContent() {
                             )}
                             {isNpc && <Chip label="NPC" size="small" sx={{ fontSize: 9, height: 16, bgcolor: "#374151", color: "#9ca3af" }} />}
                             {isMaster && (
-                              <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => { e.stopPropagation(); setHpEditParticipant(p); setHpEditValue(p.currentLife); setHpEditOpen(true); }}>
-                                <EditIcon sx={{ fontSize: 13, color: "#666" }} />
+                              <IconButton size="small" aria-label="Ajustar HP" sx={{ p: isTouch ? 0.75 : 0.25 }} onClick={(e) => { e.stopPropagation(); setHpEditParticipant(p); setHpEditValue(p.currentLife); setHpEditOpen(true); }}>
+                                <EditIcon sx={{ fontSize: isTouch ? 16 : 13, color: "#666" }} />
                               </IconButton>
                             )}
                           </Stack>
@@ -895,7 +1066,8 @@ function CombatScreenContent() {
                         <EffectChips effects={p.character.statusEffects} />
                       </CardContent>
                     </Card>
-                  </Reorder.Item>
+                    </>)}
+                  </TurnOrderItem>
                 );
               })}
             </Stack>
@@ -903,7 +1075,7 @@ function CombatScreenContent() {
         </Box>
 
         {/* CAMPO DE BATALHA */}
-        <Box sx={{ display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid rgba(107,122,219,0.2)", background: "radial-gradient(circle at center, #1a1a2e 0%, #0e0e1a 70%)", position: "relative" }}>
+        <Box sx={{ display: isMobile && mobileTab !== "field" ? "none" : "flex", flex: 1, minHeight: 0, flexDirection: "column", overflow: "hidden", border: { md: "1px solid rgba(107,122,219,0.2)" }, background: "radial-gradient(circle at center, #1a1a2e 0%, #0e0e1a 70%)", position: "relative" }}>
           {/* Barra de título */}
           <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid rgba(107,122,219,0.15)", display: "flex", alignItems: "center", gap: 1, backgroundColor: "rgba(14,14,26,0.8)", flexShrink: 0 }}>
             <Typography fontSize={11} color={screenShareActive ? "#4ade80" : "#555"} sx={{ flex: 1 }}>
@@ -935,7 +1107,7 @@ function CombatScreenContent() {
         </Box>
 
         {/* LOG */}
-        <Box sx={{ p: 2, borderLeft: "1px solid rgba(17,16,16,0.6)", display: "flex", flexDirection: "column", overflow: "hidden", background: "linear-gradient(135deg, rgba(14,14,26,0.8) 0%, rgba(28,28,46,0.4) 100%)" }}>
+        <Box sx={{ p: { xs: 1.5, md: 2 }, borderLeft: { md: "1px solid rgba(17,16,16,0.6)" }, display: isMobile && mobileTab !== "log" ? "none" : "flex", flex: 1, minHeight: 0, flexDirection: "column", overflow: "hidden", background: "linear-gradient(135deg, rgba(14,14,26,0.8) 0%, rgba(28,28,46,0.4) 100%)" }}>
           <Box flex={1} overflow="auto">
             <CombatTimelineV2 logs={combat.logs ?? []} />
           </Box>
@@ -945,10 +1117,12 @@ function CombatScreenContent() {
       <Divider sx={{ borderColor: "#333" }} />
 
       {/* ===== ACTION BAR ===== */}
-      <Box sx={{ p: 2, minHeight: 125, maxHeight: 180, overflow: "auto", borderTop: isMyTurn && !pendingReactionRoll ? "2px solid rgba(79,195,247,0.8)" : "2px solid rgba(107,122,219,0.3)", background: isMyTurn && !pendingReactionRoll ? "linear-gradient(90deg, rgba(79,195,247,0.08) 0%, rgba(14,14,26,0.8) 100%)" : "linear-gradient(90deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.8) 100%)", transition: "border-color 0.4s, background 0.4s" }}>
-        <Stack spacing={2}>
+      {/* Celular: até ~40% da tela (rola por dentro se o personagem tiver
+          muitas habilidades) — a lista de alvos continua visível acima */}
+      <Box sx={{ p: { xs: 1.5, md: 2 }, flexShrink: 0, minHeight: { md: 125 }, maxHeight: { xs: "40dvh", md: 180 }, overflow: "auto", borderTop: isMyTurn && !pendingReactionRoll ? "2px solid rgba(79,195,247,0.8)" : "2px solid rgba(107,122,219,0.3)", background: isMyTurn && !pendingReactionRoll ? "linear-gradient(90deg, rgba(79,195,247,0.08) 0%, rgba(14,14,26,0.8) 100%)" : "linear-gradient(90deg, rgba(28,28,46,0.6) 0%, rgba(14,14,26,0.8) 100%)", transition: "border-color 0.4s, background 0.4s" }}>
+        <Stack spacing={{ xs: 1.5, md: 2 }}>
           <Box sx={{ pb: 1, borderBottom: "1px solid rgba(107,122,219,0.2)" }}>
-            <Typography color={isMyTurn && !pendingReactionRoll ? "#4fc3f7" : "#8B9DFF"} fontSize={14} fontWeight={500}>
+            <Typography color={isMyTurn && !pendingReactionRoll ? "#4fc3f7" : "#8B9DFF"} fontSize={{ xs: 13, md: 14 }} fontWeight={500}>
               {pendingReactionRoll ? `⚠️ Você está sendo atacado por ${pendingReactionRoll.attackerName}` : isMyTurn ? `⚔️ ${activeCharacter.name} — É o SEU TURNO!` : `Aguardando o turno de ${activeCharacter.name}...`}
             </Typography>
             {actionUsed && <Typography fontSize={12} color="#ffa726" mt={0.5}>⚡ Ação principal já utilizada neste turno</Typography>}
@@ -968,7 +1142,9 @@ function CombatScreenContent() {
             {!isMyTurn && !isMaster && myParticipant && <Typography fontSize={11} color="#6b7280" mt={0.5}>Suas habilidades — disponíveis no seu turno</Typography>}
           </Box>
 
-          <Stack direction="row" spacing={1.5} flexWrap="wrap">
+          {/* gap + useFlexGap (e não spacing): com flexWrap, o spacing do MUI
+              deixa margem esquerda torta nas linhas quebradas */}
+          <Stack direction="row" gap={{ xs: 1.25, md: 1.5 }} flexWrap="wrap" useFlexGap sx={{ pt: 0.5, pl: 0.5 }}>
             {combatPresets.map((preset) => {
               const needsTarget = preset.targetType !== "SELF";
               const presetIsAoe = !!(preset.isAreaEffect) || preset.targetType === "MULTIPLE";
@@ -1004,6 +1180,8 @@ function CombatScreenContent() {
                         } else {
                           if (selectedPresetId !== preset.id) clearTargets();
                           setSelectedPresetId(preset.id);
+                          // Celular: os alvos ficam na aba Turnos — leva o jogador até lá
+                          if (isMobile) setMobileTab("order");
                         }
                       }}
                       sx={{
@@ -1097,12 +1275,12 @@ function CombatScreenContent() {
             <Typography fontSize={12} color="#4fc3f7">
               {isAoe ? "🎯 Selecione um ou mais alvos" : "🎯 Selecione um alvo"}
               {isHealPreset ? " (você mesmo ou qualquer participante)" : " inimigo"}
-              {" "}— então clique em <strong>{selectedPreset?.name}</strong> para executar.
+              {" "}— então {isTouch ? "toque" : "clique"} em <strong>{selectedPreset?.name}</strong> para executar.
             </Typography>
           )}
           {canAct && selectedPresetId && selectedTargets.length > 0 && (
             <Typography fontSize={12} color="#a78bfa">
-              🎯 {selectedTargets.length} alvo{selectedTargets.length > 1 ? "s" : ""} selecionado{selectedTargets.length > 1 ? "s" : ""} — clique em <strong>{selectedPreset?.name}</strong> para executar.
+              🎯 {selectedTargets.length} alvo{selectedTargets.length > 1 ? "s" : ""} selecionado{selectedTargets.length > 1 ? "s" : ""} — {isTouch ? "toque" : "clique"} em <strong>{selectedPreset?.name}</strong> para executar.
             </Typography>
           )}
         </Stack>
@@ -1127,7 +1305,7 @@ function CombatScreenContent() {
             </Box>
 
             {/* Attack stats */}
-            <Stack direction="row" spacing={1.5} justifyContent="center">
+            <Stack direction="row" gap={1.5} justifyContent="center" flexWrap="wrap" useFlexGap>
               <Box sx={{ textAlign: "center", px: 2, py: 1.25, borderRadius: 1.5, backgroundColor: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", minWidth: 80 }}>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>Rolagem</Typography>
                 <Typography variant="h5" color="#f87171" fontWeight={800} lineHeight={1}>{pendingReactionRoll?.total}</Typography>
@@ -1171,17 +1349,18 @@ function CombatScreenContent() {
                 )}
               </Typography>
             )}
-            <Stack direction="row" spacing={1} flexWrap="wrap">
+            {/* Celular: botões grandes, um por linha — reação tem pressa e o dedo erra botão pequeno */}
+            <Stack direction={{ xs: "column", sm: "row" }} gap={1} flexWrap="wrap" useFlexGap>
               {pendingReactionRoll?.currentReactionTarget?.blockPresetId && (
-                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "BLOCK")}>🛡️ Bloquear</Button>
+                <Button variant="contained" color="warning" size={isTouch ? "medium" : "small"} disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "BLOCK")}>🛡️ Bloquear</Button>
               )}
               {pendingReactionRoll?.currentReactionTarget?.dodgePresetId && (
-                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "DODGE")}>💨 Esquivar</Button>
+                <Button variant="contained" color="warning" size={isTouch ? "medium" : "small"} disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "DODGE")}>💨 Esquivar</Button>
               )}
               {pendingReactionRoll?.currentReactionTarget?.counterAttackPresetId && (
-                <Button variant="contained" color="warning" size="small" disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "COUNTER_ATTACK")}>⚔️ Contra-atacar</Button>
+                <Button variant="contained" color="warning" size={isTouch ? "medium" : "small"} disabled={reactionBlocked} onClick={() => resolveReaction(pendingReactionRoll.id, "COUNTER_ATTACK")}>⚔️ Contra-atacar</Button>
               )}
-              <Button color="error" size="small" variant={reactionBlocked ? "contained" : "text"} onClick={() => resolveReaction(pendingReactionRoll.id, "SKIP")}>
+              <Button color="error" size={isTouch ? "medium" : "small"} variant={reactionBlocked ? "contained" : "text"} onClick={() => resolveReaction(pendingReactionRoll.id, "SKIP")}>
                 {reactionBlocked ? "Absorver o dano" : "✗ Não reagir"}
               </Button>
             </Stack>
@@ -1364,7 +1543,7 @@ function CombatScreenContent() {
             transition={{ duration: 0.25 }}
             style={{ position: "fixed", inset: 0, zIndex: 1300, background: "#080810", overflow: "auto" }}
           >
-            <Box sx={{ p: 3 }}>
+            <Box sx={{ p: { xs: 1.5, sm: 3 }, pt: { xs: "calc(12px + env(safe-area-inset-top))", sm: 3 } }}>
               {/* Header */}
               <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
                 <Stack>
@@ -1378,7 +1557,7 @@ function CombatScreenContent() {
 
               {/* Tela compartilhada fullscreen */}
               {screenShareActive && screenShareStream && (
-                <Box sx={{ mb: 3, borderRadius: 2, overflow: "hidden", border: "1px solid rgba(107,122,219,0.3)", height: 480, position: "relative" }}>
+                <Box sx={{ mb: 3, borderRadius: 2, overflow: "hidden", border: "1px solid rgba(107,122,219,0.3)", height: { xs: "40dvh", md: 480 }, position: "relative" }}>
                   <video
                     ref={fullscreenVideoRef}
                     autoPlay
@@ -1398,7 +1577,7 @@ function CombatScreenContent() {
               )}
 
               {/* Participants grid */}
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 2 }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(240px, 100%), 1fr))", gap: { xs: 1.5, sm: 2 } }}>
                 {ordered.map((p: any) => {
                   const isActive = p.turnOrder === combat.currentTurnIndex;
                   const isNpc = checkIsNpc(p.character, masterId);

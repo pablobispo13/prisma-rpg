@@ -7,6 +7,9 @@ import { Character } from "../../types/types";
 import api from "../../lib/api";
 import { createCharacterTemplate } from "../../lib/characterTemplate";
 import { DiceInputRoller } from "../DiceInputRoller";
+import Link from "next/link";
+import { FULL_HEIGHT } from "../../lib/layout";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 type Props = {
   isSpectator?: boolean;
@@ -63,7 +66,7 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
 
   if (loadingCharacter) return <>Carregando...</>
   if (!character) {
-    return <Stack display={"flex"} height={"calc(100vh - 64px)"} justifyContent={"center"} flexDirection={"row"} gap={2} alignItems={"center"}>
+    return <Stack display={"flex"} height={FULL_HEIGHT} justifyContent={"center"} flexDirection={"row"} gap={2} alignItems={"center"} px={2}>
       {forcedCharacterId ? (
         <Button disabled color="warning">
           Personagem não encontrado nesta mesa
@@ -79,7 +82,12 @@ export default function MesaJogador({ forcedCharacterId, isSpectator = false }: 
   return (
     <>
       {isSpectator && (
-        <Stack mb={2} alignItems={"center"}>
+        <Stack mb={2} alignItems={"center"} px={2} pt={1}>
+          {/* Em nova aba (navegador) tanto faz; no PWA instalado a ficha abre
+              na mesma janela e esse é o caminho de volta (ver openAppPage) */}
+          <Button component={Link} href="/protected/" startIcon={<ArrowBackIcon />} size="small" sx={{ alignSelf: "flex-start" }}>
+            Voltar à mesa
+          </Button>
           <Button disabled color="warning">
             Visualização de personagem específica
           </Button>

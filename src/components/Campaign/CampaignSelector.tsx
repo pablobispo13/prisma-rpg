@@ -26,7 +26,7 @@ export default function CampaignSelector() {
           background: "rgba(107,122,219,0.10)",
           border: "1px solid rgba(107,122,219,0.30)",
           borderRadius: 1.5, px: 1, py: 0.4, cursor: "pointer",
-          color: "#cdd1e0", fontSize: 12, maxWidth: 180,
+          color: "#cdd1e0", fontSize: 12, maxWidth: { xs: 130, sm: 180 }, minWidth: 0,
           "&:hover": { background: "rgba(107,122,219,0.18)" },
         }}
       >
@@ -56,7 +56,8 @@ export default function CampaignSelector() {
           borderRadius: 1.5,
           px: 1,
           py: 0.3,
-          maxWidth: 180,
+          maxWidth: { xs: 140, sm: 180 },
+          minWidth: 0,
           "& .MuiButton-startIcon, & .MuiButton-endIcon": { mx: 0.3 },
           "&:hover": { background: "rgba(107,122,219,0.18)" },
         }}
@@ -75,7 +76,7 @@ export default function CampaignSelector() {
             background: "#16162a",
             border: "1px solid rgba(107,122,219,0.25)",
             mt: 0.5,
-            minWidth: 240,
+            minWidth: { xs: "min(240px, calc(100vw - 32px))", sm: 240 },
           },
         }}
       >

@@ -13,6 +13,8 @@ import {
   Typography,
   Avatar,
   MenuItem,
+  useMediaQuery,
+  Theme,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
@@ -71,6 +73,8 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
   const isAdmin = !!user?.isAdmin;
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
+  // Formulário longo: no celular abre em tela cheia em vez de caixa flutuante
+  const fullScreen = useMediaQuery((t: Theme) => t.breakpoints.down("sm"));
 
   const maxLifeFormula = activeCampaign?.maxLifeFormula ?? DEFAULT_MAX_LIFE_FORMULA;
   const defenseFormula = activeCampaign?.defenseFormula ?? DEFAULT_DEFENSE_FORMULA;
@@ -188,6 +192,7 @@ export function CharacterStatsModal({ open, character, onClose }: Props) {
       onClose={(_, reason) => { if (reason !== "backdropClick") handleClose(); }}
       maxWidth="sm"
       fullWidth
+      fullScreen={fullScreen}
       PaperProps={{ sx: { bgcolor: "#12121e" } }}
     >
       <DialogTitle>Editar Dados do Personagem</DialogTitle>

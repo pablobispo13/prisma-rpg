@@ -20,6 +20,8 @@ import {
     List,
     ListItemButton,
     ListItemText,
+    useMediaQuery,
+    Theme,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
@@ -231,6 +233,8 @@ type Props = {
 
 export function PresetModal({ open, characterId, preset, onClose }: Props) {
     const [form, setForm] = useState(BLANK);
+    // Formulário longo: no celular abre em tela cheia em vez de caixa flutuante
+    const fullScreen = useMediaQuery((t: Theme) => t.breakpoints.down("sm"));
     const [diceError, setDiceError]     = useState<string | null>(null);
     const [impactError, setImpactError] = useState<string | null>(null);
     const [saving, setSaving]           = useState(false);
@@ -521,6 +525,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
             onClose={(_e, reason) => { if (reason !== "backdropClick") handleClose(); }}
             maxWidth="md"
             fullWidth
+            fullScreen={fullScreen}
             PaperProps={{ sx: { bgcolor: "#12121e", backgroundImage: "none" } }}
         >
             <DialogTitle sx={{ pb: 1, display: "flex", alignItems: "center", gap: 1 }}>
@@ -565,7 +570,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     {/* ── Tipo e alvo ── */}
                     <Box>
                         <SectionLabel>Tipo e Alvo</SectionLabel>
-                        <Stack direction="row" spacing={1.5}>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                             <TextField select label="Tipo" value={form.type}
                                 onChange={e => update("type", e.target.value)} fullWidth size="small">
                                 {ACTION_TYPES.map(t => (
@@ -612,7 +617,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                     {/* ── Rolagem ── */}
                     <Box>
                         <SectionLabel>Rolagem</SectionLabel>
-                        <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "flex-start" }}>
                             <TextField
                                 label="Dado de ataque"
                                 value={form.diceFormula}
@@ -709,7 +714,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                         </Typography>
 
                         {showCrit && (
-                            <Stack direction="row" spacing={1.5} mt={1.5}>
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} mt={1.5}>
                                 <TextField
                                     label="Crítico ≥"
                                     type="number"
@@ -742,7 +747,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                 (esquiva/bloqueio/contra-ataque) do alvo — este campo não se aplica a este tipo.
                             </Typography>
                         ) : (
-                        <Stack direction="row" spacing={1.5}>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                             <TextField select label="Como resolve contra o alvo" value={form.resolution}
                                 onChange={e => update("resolution", e.target.value)} fullWidth size="small">
                                 {RESOLUTION_TYPES.map(r => (
@@ -846,7 +851,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                         sx={{ p: 1.5, borderRadius: 1, border: "1px solid rgba(167,139,250,0.2)", bgcolor: "rgba(167,139,250,0.04)" }}>
                                         <Stack direction="row" spacing={1.5} alignItems="flex-start">
                                             <Stack spacing={1.5} flex={1}>
-                                                <Stack direction="row" spacing={1.5}>
+                                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                                                     <TextField
                                                         label={form.effects.length > 1 ? `Nome do efeito ${idx + 1}` : "Nome do efeito"}
                                                         value={row.name}
@@ -881,7 +886,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                                 )}
 
                                                 {needs && (
-                                                    <Stack direction="row" spacing={1.5}>
+                                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                                                         {needs.stat && (
                                                             <TextField select label="Atributo afetado" value={row.statAffected}
                                                                 onChange={e => updateRow(row._key, { statAffected: e.target.value })} fullWidth size="small">
@@ -924,7 +929,7 @@ export function PresetModal({ open, characterId, preset, onClose }: Props) {
                                                 )}
 
                                                 {isContested && needs?.duration && (
-                                                    <Stack direction="row" spacing={1.5} alignItems="center">
+                                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "flex-start", sm: "center" }}>
                                                         <FormControlLabel
                                                             control={<Switch size="small" checked={row.retestEachRound}
                                                                 onChange={e => updateRow(row._key, { retestEachRound: e.target.checked })} />}

@@ -1,0 +1,69 @@
+// Notas de versão exibidas no app (botão "Novidades" no topo).
+// Como adicionar uma versão nova: ver docs/RELEASE_NOTES.md.
+//
+// Regras rápidas:
+//  - A versão MAIS NOVA fica em PRIMEIRO na lista.
+//  - `version` segue semver e deve bater com o "version" do package.json.
+//  - Texto escrito para quem joga (mestre e jogadores), não para devs.
+
+export type ReleaseItemType = "new" | "improved" | "fixed" | "removed";
+
+/** Para quem o item importa. Omitido = todos. Só muda o selo exibido. */
+export type ReleaseAudience = "master" | "player";
+
+export type ReleaseItem = {
+  type: ReleaseItemType;
+  text: string;
+  audience?: ReleaseAudience;
+};
+
+export type ReleaseNote = {
+  /** Semver, ex: "0.3.0". Usado para saber se o usuário já viu a versão. */
+  version: string;
+  /** Data de publicação no formato AAAA-MM-DD. */
+  date: string;
+  /** Título curto da versão (aparece em destaque). */
+  title: string;
+  /** Uma ou duas frases opcionais resumindo a versão. */
+  summary?: string;
+  items: ReleaseItem[];
+};
+
+export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "0.2.0",
+    date: "2026-11-16",
+    title: "App instalável e telas ajustadas para celular",
+    summary:
+      "Agora dá para instalar o Prisma RPG no celular ou no computador, e todas as telas — principalmente o combate — foram ajustadas para funcionar bem em qualquer tamanho de tela.",
+    items: [
+      // Novidades
+      { type: "new", text: "App instalável: adicione o Prisma RPG à tela inicial e abra em janela própria, sem a barra do navegador. No Chrome/Edge/Android use o botão “Instalar app” no topo; no iPhone, Compartilhar → Adicionar à Tela de Início." },
+      { type: "new", text: "Combate no celular em abas — Turnos, Campo e Log — com a barra de habilidades sempre visível embaixo." },
+      { type: "new", text: "A aba Log mostra quantas ações novas aconteceram enquanto você olhava outra aba." },
+      { type: "new", text: "Ao escolher uma habilidade no celular, o app leva você direto para a lista de alvos." },
+      { type: "new", text: "O celular vibra quando chega o seu turno (Android).", audience: "player" },
+      { type: "new", text: "No celular, as ações do mestre no combate (adicionar personagem, exportar log, encerrar) ficam no menu ⋮.", audience: "master" },
+      { type: "new", text: "Tela de “Sem conexão” que volta sozinha quando a internet retorna." },
+      { type: "new", text: "Painel de Novidades (este aqui) para acompanhar o que mudou em cada versão." },
+
+      // Melhorias
+      { type: "improved", text: "Botões de reação (bloquear, esquivar, contra-atacar) maiores e um por linha no celular.", audience: "player" },
+      { type: "improved", text: "Reordenar a ordem de turno no toque: segure a alça ⋮⋮ do card e arraste. A lista volta a rolar com o dedo normalmente.", audience: "master" },
+      { type: "improved", text: "Mesa do mestre em uma coluna só em telas menores, com as rolagens recentes no final da página.", audience: "master" },
+      { type: "improved", text: "Lista de jogadores e inimigos do mestre: no celular os botões de ação ficam numa segunda linha e o nome aparece inteiro.", audience: "master" },
+      { type: "improved", text: "Editor de habilidades e de dados do personagem abrem em tela cheia no celular, com os campos empilhados." },
+      { type: "improved", text: "Todas as janelas (modais) aproveitam a largura da tela no celular." },
+      { type: "improved", text: "Barra superior mais compacta no celular." },
+      { type: "improved", text: "Tocar no logo do dado leva de volta à mesa; a ficha aberta pelo mestre ganhou o botão “Voltar à mesa”." },
+      { type: "improved", text: "O iPhone não dá mais zoom sozinho ao tocar em campos de texto." },
+
+      // Correções
+      { type: "fixed", text: "A barra de habilidades do combate ficava parcialmente escondida embaixo da tela (em qualquer tamanho de tela)." },
+      { type: "fixed", text: "O final da tela da mesa do mestre ficava cortado.", audience: "master" },
+      { type: "fixed", text: "No app instalado, abrir um combate ou uma ficha abria fora do app (no iPhone, aparecia deslogado)." },
+    ],
+  },
+];
+
+export const LATEST_RELEASE = RELEASE_NOTES[0];

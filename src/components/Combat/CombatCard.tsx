@@ -1,6 +1,7 @@
 import { Card, CardContent, CardActions, Stack, Button, Grid, Typography, Chip, Skeleton } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { Combat } from "@prisma/client";
+import { openAppPage } from "../../lib/pwa";
 type Props = {
   combat?: Combat;
   loading?: boolean
@@ -73,13 +74,7 @@ export function CombatCard({ combat, loading = false, }: Props) {
                 fullWidth
                 variant="outlined"
                 endIcon={<OpenInNewIcon />}
-                onClick={() =>
-                  window.open(
-                    `/protected/combat?combatId=${combat?.id}`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  )
-                }
+                onClick={() => openAppPage(`/protected/combat?combatId=${combat?.id}`)}
               >
                 Abrir combate
               </Button>
