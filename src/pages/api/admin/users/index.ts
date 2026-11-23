@@ -1,6 +1,7 @@
 import type { NextApiResponse } from "next";
 import { authenticate, AuthenticatedRequest } from "../../../../lib/auth";
 import { prisma } from "../../../../lib/prisma";
+import { escapeRegex } from "../../../../lib/userEmail";
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
@@ -14,7 +15,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     return;
   }
 
-  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  // Escapado: no MongoDB o filtro insensitive vira $regex sem escape.
+  const q = typeof req.query.q === "string" ? escapeRegex(req.query.q.trim()) : "";
   const roleFilter = typeof req.query.role === "string" ? req.query.role : "";
 
   const users = await prisma.user.findMany({

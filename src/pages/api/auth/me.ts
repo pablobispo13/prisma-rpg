@@ -1,10 +1,12 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../../lib/prisma";
+import { isTokenRevoked } from "../../../lib/auth";
 
 type JwtPayload = {
     userId: string;
     role: string;
+    iat?: number;
 };
 
 export default async function handler(
@@ -39,7 +41,8 @@ export default async function handler(
                 email: true,
                 role: true,
                 isAdmin: true,
-                characters: true
+                characters: true,
+                passwordChangedAt: true,
             },
         });
 
@@ -47,7 +50,12 @@ export default async function handler(
             return res.status(401).json({ message: "Usuário não encontrado" });
         }
 
-        return res.status(200).json({ user });
+        const { passwordChangedAt, ...publicUser } = user;
+        if (isTokenRevoked(decoded.iat, passwordChangedAt)) {
+            return res.status(401).json({ message: "Sessão encerrada. Faça login novamente." });
+        }
+
+        return res.status(200).json({ user: publicUser });
     } catch {
         return res.status(401).json({ message: "Token inválido ou expirado" });
     }

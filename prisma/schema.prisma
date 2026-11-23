@@ -126,6 +126,8 @@ model User {
   resetTokenHash    String?
   resetTokenExpires DateTime?
   resetRequestedAt  DateTime?
+  // Tokens JWT emitidos antes desta data são rejeitados (logout em todos os dispositivos).
+  passwordChangedAt DateTime?
 
   characters      Character[]
   ownedCampaigns  Campaign[]       @relation("CampaignMaster")

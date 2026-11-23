@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import jwt from "jsonwebtoken";
+import { prisma } from "./prisma";
 
 export type AuthUser = {
   userId: string;
@@ -18,6 +19,16 @@ export interface AuthenticatedRequest extends NextApiRequest {
   campaign?: CampaignScope;
 }
 
+/**
+ * true se o token foi emitido antes da última troca de senha — ou seja, a sessão
+ * foi encerrada ("logout em todos os dispositivos"). `iat` vem em segundos.
+ */
+export function isTokenRevoked(iat: number | undefined, passwordChangedAt: Date | null | undefined) {
+  if (!passwordChangedAt) return false;
+  if (typeof iat !== "number") return true;
+  return iat < Math.floor(passwordChangedAt.getTime() / 1000);
+}
+
 export function authenticate(
   handler: (req: AuthenticatedRequest, res: NextApiResponse) => void | Promise<void>
 ) {
@@ -32,10 +43,24 @@ export function authenticate(
         return res.status(401).json({ message: "Token inválido ou ausente" });
 
       const secret = process.env.JWT_SECRET!;
-      const decoded = jwt.verify(token, secret) as any;/* eslint-disable  @typescript-eslint/no-explicit-any */
+      const decoded = jwt.verify(token, secret) as jwt.JwtPayload & Partial<AuthUser>;
 
       if (!decoded.userId || !decoded.role || !decoded.username)
         return res.status(401).json({ message: "Token inválido" });
+
+      let session: { passwordChangedAt: Date | null } | null;
+      try {
+        session = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { passwordChangedAt: true },
+        });
+      } catch (err) {
+        // Falha de banco não deve deslogar o usuário (o cliente desloga em qualquer 401).
+        console.error("[auth] falha ao validar sessão:", err);
+        return res.status(500).json({ message: "Erro ao validar a sessão" });
+      }
+      if (!session || isTokenRevoked(decoded.iat, session.passwordChangedAt))
+        return res.status(401).json({ message: "Sessão encerrada. Faça login novamente." });
 
       req.user = {
         userId: decoded.userId,

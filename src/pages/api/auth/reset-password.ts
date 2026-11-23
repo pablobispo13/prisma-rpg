@@ -26,6 +26,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     where: { id: user.id, resetTokenHash: user.resetTokenHash },
     data: {
       password: hashed,
+      // Invalida todos os JWTs emitidos até agora (logout em todos os dispositivos).
+      passwordChangedAt: new Date(),
       resetTokenHash: null,
       resetTokenExpires: null,
       resetRequestedAt: null,
@@ -33,5 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
   if (count === 0) return res.status(400).json({ message: INVALID_LINK });
 
-  return res.json({ message: "Senha redefinida! Faça login com a nova senha." });
+  return res.json({
+    message: "Senha redefinida! Todos os dispositivos foram desconectados. Faça login com a nova senha.",
+  });
 }

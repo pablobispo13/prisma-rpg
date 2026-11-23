@@ -30,10 +30,11 @@ export default function ForgotPasswordPage() {
         <Box sx={{ textAlign: "center" }}>
           <MarkEmailReadIcon sx={{ fontSize: 44, color: "#8B9DFF", mb: 1 }} />
           <Typography sx={{ color: "#ddd", fontSize: 14, mb: 1 }}>
-            Se existir uma conta com <strong>{sentTo}</strong>, enviamos um link para redefinir a senha.
+            Enviamos um link para <strong>{sentTo}</strong> para você redefinir a senha.
           </Typography>
           <Typography sx={{ color: "#777", fontSize: 12 }}>
             O link vale por 30 minutos. Não chegou? Confira o spam ou tente de novo em 1 minuto.
+            Ao trocar a senha, todos os aparelhos conectados à sua conta serão desconectados.
           </Typography>
           <Button
             variant="text"

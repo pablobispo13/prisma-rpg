@@ -37,6 +37,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     summary: "Esqueceu a senha? Agora dá para redefinir sozinho, direto da tela de login.",
     items: [
       { type: "new", text: "Link “Esqueci minha senha” na tela de login: informe seu e-mail e receba um link para criar uma nova senha. O link vale por 30 minutos e só funciona uma vez." },
+      { type: "new", text: "Ao redefinir a senha, sua conta é desconectada de todos os aparelhos. Basta entrar de novo com a senha nova." },
+      { type: "improved", text: "O e-mail não diferencia mais maiúsculas de minúsculas: “Fulano@email.com” e “fulano@email.com” entram na mesma conta." },
     ],
   },
   {
