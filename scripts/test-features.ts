@@ -31,7 +31,7 @@ function check(name: string, cond: boolean, extra?: unknown) {
   }
 }
 
-type ApiResult = { status: number; data: any };
+type ApiResult = { status: number; data: any; session?: string };
 
 async function api(
   method: string,
@@ -42,7 +42,9 @@ async function api(
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+      // Sessão via cookie HttpOnly (como no navegador) + header anti-CSRF
+      ...(opts.token ? { Cookie: `prisma_session=${opts.token}` } : {}),
+      "X-Requested-With": "prisma-rpg",
       ...(opts.campaignId ? { "x-campaign-id": opts.campaignId } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -53,14 +55,18 @@ async function api(
   } catch {
     /* respostas sem corpo (204 etc.) */
   }
-  return { status: res.status, data };
+  const session = res.headers
+    .getSetCookie()
+    .map((c) => /^prisma_session=([^;]+)/.exec(c)?.[1])
+    .find(Boolean);
+  return { status: res.status, data, session };
 }
 
 async function registerAndLogin(username: string, email: string): Promise<{ id: string; token: string }> {
   await api("POST", "/auth/register", { body: { username, email, password: PASSWORD } });
   const login = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
   if (login.status !== 200) throw new Error(`Login falhou para ${email}: ${JSON.stringify(login.data)}`);
-  return { id: login.data.user.id, token: login.data.token };
+  return { id: login.data.user.id, token: login.session! };
 }
 
 async function cleanup() {
@@ -139,7 +145,7 @@ async function main() {
   await prisma.user.update({ where: { id: mestre.id }, data: { role: "MESTRE" } });
   // re-login para o token carregar o papel de MESTRE
   const mestreLogin = await api("POST", "/auth/login", { body: { email: `teste-auto-mestre-${stamp}@teste.com`, password: PASSWORD } });
-  mestre.token = mestreLogin.data.token;
+  mestre.token = mestreLogin.session!;
 
   const campaign = await prisma.campaign.create({
     data: {

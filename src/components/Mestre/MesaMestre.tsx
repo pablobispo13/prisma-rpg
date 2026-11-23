@@ -35,6 +35,7 @@ import api from "../../lib/api";
 import { Character } from "../../types/types";
 import { useActiveCombats } from "../../lib/useActiveCombats";
 import { useCampaign } from "../../context/CampaignContext";
+import { useAuth } from "../../context/AuthContext";
 import { useScreenShareContext } from "../../context/ScreenShareContext";
 import { isNpc } from "../../lib/isNpc";
 import { createCharacterTemplate, Archetype, ARCHETYPE_LABELS } from "../../lib/characterTemplate";
@@ -207,7 +208,8 @@ export default function MesaMestre() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [openSelector, setOpenSelector] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const { combats, reload: reloadCombats } = useActiveCombats();
   const { activeCampaign } = useCampaign();
   const masterId = activeCampaign?.masterId ?? null;
@@ -234,19 +236,18 @@ export default function MesaMestre() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const fetchCharacters = useCallback(async () => {
-    if (!token) return;
+    if (!userId) return;
     try {
       const res = await api.get("/characters");
       setCharacters(res.data.characters || []);
     } catch {
       toast.error("Erro ao buscar personagens");
     }
-  }, [token]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!token) return;
     fetchCharacters();
-  }, [token]);
+  }, [fetchCharacters]);
 
   useEffect(() => {
     localStorage.setItem("mesa_hidden_enemies", JSON.stringify(hiddenEnemyIds));

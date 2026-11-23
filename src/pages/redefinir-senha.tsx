@@ -1,5 +1,6 @@
 import { Box, Button, IconButton, InputAdornment, Link as MuiLink, TextField, Typography } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Head from "next/head";
 import NextLink from "next/link";
 import { useRouter } from "next/router";
 import { toast } from "react-toastify";
@@ -12,8 +13,23 @@ import AuthShell, { fieldSx, iconSx, submitButtonSx } from "../components/Auth/A
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const token = typeof router.query.token === "string" ? router.query.token : "";
+  const [token, setToken] = useState("");
+  const [tokenChecked, setTokenChecked] = useState(false);
   const [showPass, setShowPass] = useState(false);
+
+  // O token vem no fragmento (#token=...), que nunca chega ao servidor. Lemos uma
+  // vez, guardamos em memória e limpamos a barra de endereço (histórico/prints).
+  useEffect(() => {
+    const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("token");
+    // Compatibilidade com links antigos no formato ?token=
+    const fromQuery = new URLSearchParams(window.location.search).get("token");
+    const found = fromHash || fromQuery || "";
+    if (found) {
+      setToken(found);
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
+    setTokenChecked(true);
+  }, []);
   const {
     register,
     handleSubmit,
@@ -58,7 +74,11 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell subtitle="Nova senha">
-      {router.isReady && !token ? (
+      <Head>
+        {/* Nada desta página vaza no Referer para outros sites */}
+        <meta name="referrer" content="no-referrer" />
+      </Head>
+      {tokenChecked && !token ? (
         <Typography sx={{ color: "#ddd", fontSize: 14, textAlign: "center" }}>
           Link inválido. Abra o link exatamente como veio no e-mail ou{" "}
           <MuiLink component={NextLink} href="/esqueci-senha" sx={{ color: "#8B9DFF" }}>

@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcrypt";
 import { prisma } from "../../../lib/prisma";
 import { hashResetToken, isWellFormedResetToken } from "../../../lib/passwordReset";
+import { getAppUrl, sendPasswordChangedEmail } from "../../../lib/mailer";
+import { clearSessionCookie } from "../../../lib/session";
 
 const INVALID_LINK = "Link inválido ou expirado. Peça um novo e-mail de recuperação.";
 
@@ -34,6 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     },
   });
   if (count === 0) return res.status(400).json({ message: INVALID_LINK });
+
+  // Este navegador também sai (a sessão antiga já está revogada de qualquer forma).
+  clearSessionCookie(res);
+
+  // Aviso de segurança: falha aqui não desfaz a troca de senha, só fica no log.
+  try {
+    await sendPasswordChangedEmail(user.email, user.username, `${getAppUrl()}/esqueci-senha`);
+  } catch (err) {
+    console.error("[reset-password] falha ao enviar aviso de senha alterada:", err);
+  }
 
   return res.json({
     message: "Senha redefinida! Todos os dispositivos foram desconectados. Faça login com a nova senha.",

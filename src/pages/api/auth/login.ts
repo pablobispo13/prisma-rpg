@@ -1,8 +1,8 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { prisma } from "../../../lib/prisma";
 import { normalizeEmail } from "../../../lib/userEmail";
+import { setSessionCookie, signSession } from "../../../lib/session";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
@@ -17,10 +17,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ message: "Senha incorreta" });
 
-  const token = jwt.sign(
-    { userId: user.id, role: user.role, username: user.username, isAdmin: user.isAdmin },
-    process.env.JWT_SECRET!,
-    { expiresIn: "7d" }
+  setSessionCookie(
+    res,
+    signSession({ userId: user.id, role: user.role, username: user.username, isAdmin: user.isAdmin })
   );
-  res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role, isAdmin: user.isAdmin } });
+  res.json({ user: { id: user.id, username: user.username, email: user.email, role: user.role, isAdmin: user.isAdmin } });
 }

@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Página que recebe o token de recuperação de senha
+        source: "/redefinir-senha",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      {
         source: "/manifest.webmanifest",
         headers: [{ key: "Content-Type", value: "application/manifest+json" }],
       },

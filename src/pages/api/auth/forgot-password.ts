@@ -41,7 +41,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   try {
-    const link = `${getAppUrl()}/redefinir-senha?token=${token}`;
+    // Token no fragmento (#): o navegador nunca o envia ao servidor, então ele
+    // não aparece em logs, no header Referer nem no cache do service worker.
+    const link = `${getAppUrl()}/redefinir-senha#token=${token}`;
     await sendPasswordResetEmail(user.email, user.username, link, RESET_TOKEN_TTL_MINUTES);
   } catch (err) {
     console.error("[forgot-password] falha ao enviar e-mail:", err);

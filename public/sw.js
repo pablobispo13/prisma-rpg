@@ -7,7 +7,7 @@
 //
 // Ao mudar a estratégia de cache, incremente VERSION — o activate apaga os
 // caches das versões anteriores.
-const VERSION = "v2";
+const VERSION = "v3";
 const STATIC_CACHE = `prisma-static-${VERSION}`;
 const PAGES_CACHE = `prisma-pages-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -50,6 +50,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Estado vivo: nunca intercepta a API
   if (url.pathname.startsWith("/api/")) return;
+  // Telas de senha: nunca guardar no cache (links de recuperação são de uso único)
+  if (url.pathname === "/redefinir-senha" || url.pathname === "/esqueci-senha") return;
 
   // Navegação (abrir/recarregar página): rede primeiro; se cair, usa a
   // última versão salva da página ou a tela de offline

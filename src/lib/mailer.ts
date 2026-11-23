@@ -58,6 +58,35 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+/** Aviso de segurança enviado depois que a senha foi trocada. */
+export async function sendPasswordChangedEmail(to: string, username: string, forgotLink: string) {
+  const name = escapeHtml(username);
+  const when = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  await sendMail({
+    to,
+    subject: "Prisma RPG — sua senha foi alterada",
+    text:
+      `Olá, ${username}!\n\n` +
+      `A senha da sua conta no Prisma RPG foi alterada em ${when} (horário de Brasília), ` +
+      `e todos os aparelhos conectados foram desconectados.\n\n` +
+      `Se foi você, está tudo certo. Se NÃO foi você, recupere sua conta agora:\n${forgotLink}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222">
+        <h2 style="color:#5a6bcf;margin:0 0 16px">Prisma RPG</h2>
+        <p>Olá, <strong>${name}</strong>!</p>
+        <p>A senha da sua conta foi alterada em <strong>${when}</strong> (horário de Brasília),
+           e todos os aparelhos conectados foram desconectados.</p>
+        <p>Se foi você, está tudo certo — não precisa fazer nada.</p>
+        <p><strong>Se não foi você</strong>, recupere sua conta agora:</p>
+        <p style="margin:24px 0">
+          <a href="${forgotLink}" style="background:#c0392b;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold">
+            Não fui eu — recuperar conta
+          </a>
+        </p>
+      </div>`,
+  });
+}
+
 export async function sendPasswordResetEmail(to: string, username: string, link: string, minutes: number) {
   const name = escapeHtml(username);
   await sendMail({

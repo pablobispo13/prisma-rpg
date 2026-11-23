@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import api from "./api";
+import api, { CSRF_HEADERS } from "./api";
 import { getPusherClient } from "./pusherClient";
 import { RTC_CONFIG, ScreenShareSignal, ScreenShareState } from "./webrtc";
 
@@ -219,14 +219,15 @@ export function useScreenShareBroadcaster(campaignId: string | null) {
     useEffect(() => {
         function handleBeforeUnload() {
             if (!sharingRef.current || !sessionIdRef.current) return;
-            const token = localStorage.getItem("token");
             const activeCampaignId = localStorage.getItem("activeCampaignId");
+            // Cookie de sessão vai automaticamente (mesma origem)
             fetch("/api/screen-share/stop", {
                 method: "POST",
                 keepalive: true,
+                credentials: "same-origin",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    ...CSRF_HEADERS,
                     ...(activeCampaignId ? { "x-campaign-id": activeCampaignId } : {}),
                 },
                 body: JSON.stringify({ sessionId: sessionIdRef.current }),

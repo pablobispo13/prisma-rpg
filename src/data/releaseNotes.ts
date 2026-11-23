@@ -39,6 +39,10 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       { type: "new", text: "Link “Esqueci minha senha” na tela de login: informe seu e-mail e receba um link para criar uma nova senha. O link vale por 30 minutos e só funciona uma vez." },
       { type: "new", text: "Ao redefinir a senha, sua conta é desconectada de todos os aparelhos. Basta entrar de novo com a senha nova." },
       { type: "improved", text: "O e-mail não diferencia mais maiúsculas de minúsculas: “Fulano@email.com” e “fulano@email.com” entram na mesma conta." },
+      { type: "new", text: "Quando sua senha é alterada, você recebe um e-mail de aviso. Se não foi você, o próprio e-mail tem um botão para recuperar a conta." },
+      { type: "improved", text: "Login mais seguro: sua sessão agora fica guardada de um jeito que scripts maliciosos não conseguem roubar. Quem já estava logado continua logado." },
+      { type: "fixed", text: "Errar a senha no login mostrava “Sua sessão expirou” em vez de “Senha incorreta”." },
+      { type: "fixed", text: "Criar conta com um nome de usuário já usado dava um erro sem explicação; agora avisa que o nome está em uso." },
     ],
   },
   {

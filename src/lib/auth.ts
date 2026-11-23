@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import jwt from "jsonwebtoken";
 import { prisma } from "./prisma";
+import { clearSessionCookie, failsCsrfCheck, getRequestToken } from "./session";
 
 export type AuthUser = {
   userId: string;
@@ -17,6 +18,8 @@ export type CampaignScope = {
 export interface AuthenticatedRequest extends NextApiRequest {
   user?: AuthUser;
   campaign?: CampaignScope;
+  /** De onde veio a sessão: cookie HttpOnly (app) ou header Bearer (scripts/migração). */
+  authSource?: "cookie" | "bearer";
 }
 
 /**
@@ -33,20 +36,22 @@ export function authenticate(
   handler: (req: AuthenticatedRequest, res: NextApiResponse) => void | Promise<void>
 ) {
   return async (req: AuthenticatedRequest, res: NextApiResponse) => {
+    const found = getRequestToken(req);
+    if (!found) return res.status(401).json({ message: "Não autorizado" });
+
+    const unauthorized = (message: string) => {
+      if (found.source === "cookie") clearSessionCookie(res);
+      return res.status(401).json({ message });
+    };
+
+    if (found.source === "cookie" && failsCsrfCheck(req))
+      return res.status(403).json({ message: "Requisição bloqueada (CSRF)" });
+
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader)
-        return res.status(401).json({ message: "Não autorizado" });
-
-      const [scheme, token] = authHeader.split(" ");
-      if (scheme !== "Bearer" || !token)
-        return res.status(401).json({ message: "Token inválido ou ausente" });
-
-      const secret = process.env.JWT_SECRET!;
-      const decoded = jwt.verify(token, secret) as jwt.JwtPayload & Partial<AuthUser>;
+      const decoded = jwt.verify(found.token, process.env.JWT_SECRET!) as jwt.JwtPayload & Partial<AuthUser>;
 
       if (!decoded.userId || !decoded.role || !decoded.username)
-        return res.status(401).json({ message: "Token inválido" });
+        return unauthorized("Token inválido");
 
       let session: { passwordChangedAt: Date | null } | null;
       try {
@@ -60,7 +65,7 @@ export function authenticate(
         return res.status(500).json({ message: "Erro ao validar a sessão" });
       }
       if (!session || isTokenRevoked(decoded.iat, session.passwordChangedAt))
-        return res.status(401).json({ message: "Sessão encerrada. Faça login novamente." });
+        return unauthorized("Sessão encerrada. Faça login novamente.");
 
       req.user = {
         userId: decoded.userId,
@@ -68,10 +73,11 @@ export function authenticate(
         username: decoded.username,
         isAdmin: !!decoded.isAdmin,
       };
+      req.authSource = found.source;
 
       return handler(req, res);
     } catch {
-      return res.status(401).json({ message: "Token inválido" });
+      return unauthorized("Token inválido");
     }
   };
 }

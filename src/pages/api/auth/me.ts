@@ -1,62 +1,35 @@
-import { NextApiRequest, NextApiResponse } from "next";
-import jwt from "jsonwebtoken";
+import type { NextApiResponse } from "next";
 import { prisma } from "../../../lib/prisma";
-import { isTokenRevoked } from "../../../lib/auth";
+import { authenticate, AuthenticatedRequest } from "../../../lib/auth";
+import { getRequestToken, setSessionCookie } from "../../../lib/session";
 
-type JwtPayload = {
-    userId: string;
-    role: string;
-    iat?: number;
-};
+async function handler(req: AuthenticatedRequest, res: NextApiResponse): Promise<void> {
+    if (req.method !== "GET") { res.status(405).end(); return; }
 
-export default async function handler(
-    req: NextApiRequest,
-    res: NextApiResponse
-) {
-    if (req.method !== "GET") return res.status(405).end();
+    const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: {
+            id: true,
+            username: true,
+            email: true,
+            role: true,
+            isAdmin: true,
+            characters: true,
+        },
+    });
 
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-        return res.status(401).json({ message: "Token não informado" });
+    if (!user) {
+        res.status(401).json({ message: "Usuário não encontrado" });
+        return;
     }
 
-    const [, token] = authHeader.split(" ");
-
-    if (!token) {
-        return res.status(401).json({ message: "Token malformado" });
+    // Migração: clientes antigos guardavam o JWT no localStorage e o enviam aqui
+    // uma única vez via Bearer. Convertemos para o cookie HttpOnly.
+    if (req.authSource === "bearer") {
+        setSessionCookie(res, getRequestToken(req)!.token);
     }
 
-    try {
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET!
-        ) as JwtPayload;
-
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
-            select: {
-                id: true,
-                username: true,
-                email: true,
-                role: true,
-                isAdmin: true,
-                characters: true,
-                passwordChangedAt: true,
-            },
-        });
-
-        if (!user) {
-            return res.status(401).json({ message: "Usuário não encontrado" });
-        }
-
-        const { passwordChangedAt, ...publicUser } = user;
-        if (isTokenRevoked(decoded.iat, passwordChangedAt)) {
-            return res.status(401).json({ message: "Sessão encerrada. Faça login novamente." });
-        }
-
-        return res.status(200).json({ user: publicUser });
-    } catch {
-        return res.status(401).json({ message: "Token inválido ou expirado" });
-    }
+    res.status(200).json({ user });
 }
+
+export default authenticate(handler);
