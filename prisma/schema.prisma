@@ -122,6 +122,11 @@ model User {
   isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  // Recuperação de senha: guardamos só o HASH (sha256) do token enviado por e-mail.
+  resetTokenHash    String?
+  resetTokenExpires DateTime?
+  resetRequestedAt  DateTime?
+
   characters      Character[]
   ownedCampaigns  Campaign[]       @relation("CampaignMaster")
   campaignMembers CampaignMember[]

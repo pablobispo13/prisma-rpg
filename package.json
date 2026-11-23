@@ -1,6 +1,6 @@
 {
   "name": "next-rpg-backend",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,6 +24,7 @@
     "framer-motion": "^12.29.2",
     "jsonwebtoken": "^9.0.2",
     "next": "15.5.9",
+    "nodemailer": "^10.6.1",
     "prisma": "^6.16.1",
     "pusher": "^5.3.3",
     "pusher-js": "^8.5.0",
@@ -41,6 +42,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/next": "^8.0.7",
     "@types/node": "^20.19.13",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -31,6 +31,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.4.0",
+    date: "2026-11-23",
+    title: "Recuperar senha por e-mail",
+    summary: "Esqueceu a senha? Agora dá para redefinir sozinho, direto da tela de login.",
+    items: [
+      { type: "new", text: "Link “Esqueci minha senha” na tela de login: informe seu e-mail e receba um link para criar uma nova senha. O link vale por 30 minutos e só funciona uma vez." },
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-11-16",
     title: "Ficha dentro do combate e celular deitado",
