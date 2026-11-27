@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
+import { withPulsar } from "../../../lib/pulsar";
 import bcrypt from "bcrypt";
 import { prisma } from "../../../lib/prisma";
 import { hashResetToken, isWellFormedResetToken } from "../../../lib/passwordReset";
@@ -7,7 +8,7 @@ import { clearSessionCookie } from "../../../lib/session";
 
 const INVALID_LINK = "Link inválido ou expirado. Peça um novo e-mail de recuperação.";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
   const { token, password } = req.body ?? {};
@@ -51,3 +52,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     message: "Senha redefinida! Todos os dispositivos foram desconectados. Faça login com a nova senha.",
   });
 }
+
+// Monitorado pelo Pulsar (ver src/lib/pulsar.ts)
+export default withPulsar(handler);

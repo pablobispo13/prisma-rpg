@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
+import { withPulsar } from "../../../lib/pulsar";
 import { prisma } from "../../../lib/prisma";
 import { getAppUrl, sendPasswordResetEmail } from "../../../lib/mailer";
 import { normalizeEmail } from "../../../lib/userEmail";
@@ -8,7 +9,7 @@ import {
   RESET_TOKEN_TTL_MINUTES,
 } from "../../../lib/passwordReset";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
   const email = normalizeEmail(req.body?.email);
@@ -59,3 +60,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   return res.json({ message: "Enviamos um link para redefinir a senha." });
 }
+
+// Monitorado pelo Pulsar (ver src/lib/pulsar.ts)
+export default withPulsar(handler);

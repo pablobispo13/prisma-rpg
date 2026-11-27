@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from "next";
 import jwt from "jsonwebtoken";
 import { prisma } from "./prisma";
 import { clearSessionCookie, failsCsrfCheck, getRequestToken } from "./session";
+import { withPulsar } from "./pulsar";
 
 export type AuthUser = {
   userId: string;
@@ -35,7 +36,9 @@ export function isTokenRevoked(iat: number | undefined, passwordChangedAt: Date 
 export function authenticate(
   handler: (req: AuthenticatedRequest, res: NextApiResponse) => void | Promise<void>
 ) {
-  return async (req: AuthenticatedRequest, res: NextApiResponse) => {
+  // withPulsar mede toda rota autenticada (status, duração, erros e userId) e
+  // envia ao Pulsar. Sem PULSAR_URL/PULSAR_KEY no ambiente, não faz nada.
+  return withPulsar(async (req: AuthenticatedRequest, res: NextApiResponse) => {
     const found = getRequestToken(req);
     if (!found) return res.status(401).json({ message: "Não autorizado" });
 
@@ -79,7 +82,7 @@ export function authenticate(
     } catch {
       return unauthorized("Token inválido");
     }
-  };
+  }, { getUserId: (req) => req.user?.userId });
 }
 
 /**

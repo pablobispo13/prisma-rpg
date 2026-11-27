@@ -1,10 +1,11 @@
 import { NextApiRequest, NextApiResponse } from "next";
+import { withPulsar } from "../../../lib/pulsar";
 import bcrypt from "bcrypt";
 import { prisma } from "../../../lib/prisma";
 import { normalizeEmail } from "../../../lib/userEmail";
 import { setSessionCookie, signSession } from "../../../lib/session";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
   const { password } = req.body;
@@ -23,3 +24,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   );
   res.json({ user: { id: user.id, username: user.username, email: user.email, role: user.role, isAdmin: user.isAdmin } });
 }
+
+// Monitorado pelo Pulsar (ver src/lib/pulsar.ts)
+export default withPulsar(handler);

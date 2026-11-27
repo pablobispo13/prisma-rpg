@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
+import { withPulsar } from "../../../lib/pulsar";
 import bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../lib/prisma";
@@ -8,7 +9,7 @@ import { setSessionCookie, signSession } from "../../../lib/session";
 const EMAIL_TAKEN = "Já existe uma conta com esse e-mail";
 const USERNAME_TAKEN = "Esse nome de usuário já está em uso";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
@@ -44,3 +45,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   );
   res.json({ user: { id: user.id, username: user.username, email: user.email, role: user.role, isAdmin: user.isAdmin } });
 }
+
+// Monitorado pelo Pulsar (ver src/lib/pulsar.ts)
+export default withPulsar(handler);
