@@ -5,6 +5,10 @@
  * Variáveis de ambiente do app monitorado:
  *   PULSAR_URL=https://seu-pulsar.vercel.app
  *   PULSAR_KEY=psr_...            (gerada ao cadastrar o app no Pulsar)
+ *   PULSAR_ENV=production         (opcional — detectado sozinho, ver detectEnvironment)
+ *
+ * A MESMA chave pode ser usada em todos os ambientes (local, preview, produção):
+ * cada evento leva o ambiente e o painel filtra por ele.
  *
  * Sem essas variáveis o SDK não faz nada (útil em dev).
  * Falhas de envio são silenciosas: o Pulsar fora do ar nunca derruba o seu app.
@@ -22,7 +26,21 @@ export type PulsarEvent = {
   userAgent?: string;
   userId?: string;
   error?: string;
+  /** "production" | "preview" | "development". Se omitido, usa detectEnvironment(). */
+  environment?: string;
 };
+
+/**
+ * Ambiente do app, nesta ordem:
+ *  1. PULSAR_ENV    — força um valor (ex: "production" num `next start` local de teste)
+ *  2. VERCEL_ENV    — "production" | "preview" | "development" (definido pela Vercel)
+ *  3. NODE_ENV      — "production" vira production; qualquer outro, development (= local)
+ */
+export function detectEnvironment() {
+  const env = process.env.PULSAR_ENV || process.env.VERCEL_ENV;
+  if (env) return env;
+  return process.env.NODE_ENV === "production" ? "production" : "development";
+}
 
 const SEND_TIMEOUT_MS = 1500;
 // Rotas que não vale a pena registrar (o próprio health check, assets...)
@@ -67,7 +85,7 @@ export function sendEvents(events: PulsarEvent[]): Promise<void> {
  */
 export function track(event: PulsarEvent): void {
   if (IGNORE.some((re) => re.test(event.path))) return;
-  const promise = sendEvents([{ timestamp: Date.now(), ...event }]);
+  const promise = sendEvents([{ timestamp: Date.now(), environment: detectEnvironment(), ...event }]);
   vercelWaitUntil()?.(promise);
 }
 
